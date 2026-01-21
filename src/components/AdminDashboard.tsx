@@ -37,7 +37,7 @@ export function AdminDashboard() {
   return (
     <div className="min-h-screen bg-vulcan-100 dark:bg-vulcan-950 flex">
       {/* Sidebar */}
-      <aside className="w-64 bg-white dark:bg-black-pearl-950 border-r border-black-pearl-200 dark:border-divider fixed inset-y-0 left-0 z-40 flex flex-col">
+      <aside className="w-64 bg-white dark:bg-black-pearl-950 fixed inset-y-0 left-0 z-40 flex flex-col">
         {/* Logo */}
         <div className="p-6 ">
           <h1 className="text-xl font-bold text-foreground">MEYTRICS</h1>
@@ -140,7 +140,7 @@ export function AdminDashboard() {
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t border-divider space-y-2">
+        <div className="p-4 space-y-2">
           <ThemeToggle />
           <a
             href="/"

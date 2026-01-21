@@ -18,6 +18,10 @@ export function initDatabase() {
   // Enable foreign keys
   db.pragma('foreign_keys = ON');
 
+  // Optimize SQLite performance
+  db.pragma('journal_mode = WAL'); // Write-Ahead Logging for concurrency
+  db.pragma('synchronous = NORMAL'); // Faster writes with good safety
+
   // Create users table
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -403,6 +407,7 @@ export function initDatabase() {
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_pings_service_id ON pings(service_id);
     CREATE INDEX IF NOT EXISTS idx_pings_created_at ON pings(created_at);
+    CREATE INDEX IF NOT EXISTS idx_pings_service_created ON pings(service_id, created_at); -- Compound index for fast history queries
     CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
     CREATE INDEX IF NOT EXISTS idx_incidents_created_at ON incidents(created_at);
   `);

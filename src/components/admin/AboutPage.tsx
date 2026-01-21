@@ -15,7 +15,7 @@ export function AboutPage() {
         </h1>
         <p className="text-default-500 font-medium">Open Source Status Page & Monitoring System</p>
         <div className="mt-4">
-          <Chip color="primary" variant="flat">v1.1.0</Chip>
+          <Chip color="primary" variant="flat">v{__APP_VERSION__}</Chip>
         </div>
       </div>
 
@@ -32,7 +32,7 @@ export function AboutPage() {
             <div className="space-y-2 mt-2">
               <div className="flex justify-between py-2 border-b border-divider">
                 <span className="text-default-500">Version</span>
-                <span className="font-medium">1.1.0</span>
+                <span className="font-medium">{__APP_VERSION__}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-divider">
                 <span className="text-default-500">License</span>
@@ -40,7 +40,7 @@ export function AboutPage() {
               </div>
               <div className="flex justify-between py-2 border-b border-divider">
                 <span className="text-default-500">Developer</span>
-                <span className="font-medium">Fahreza Haikal</span>
+                <span className="font-medium">fphaikal</span>
               </div>
             </div>
           </CardBody>
@@ -81,7 +81,7 @@ export function AboutPage() {
           <div className="flex gap-4">
             <Button
               as={Link}
-              href="https://github.com/meytrics/meytrics"
+              href="https://github.com/fphaikal/meytrics"
               target="_blank"
               variant="flat"
               color="default"
@@ -91,7 +91,7 @@ export function AboutPage() {
             </Button>
             <Button
               as={Link}
-              href="https://meytrics.com" // Placeholder or actual site if known
+              href="https://fph.my.id" // Placeholder or actual site if known
               target="_blank"
               color="primary"
               startContent={<Globe className="w-4 h-4" />}

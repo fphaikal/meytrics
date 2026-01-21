@@ -1,7 +1,7 @@
 {
   "name": "meytrics",
   "private": true,
-  "version": "1.2.2",
+  "version": "1.2.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -24,7 +24,9 @@
     "cors": "^2.8.5",
     "d3-scale": "^4.0.2",
     "express": "^5.0.1",
+    "express-rate-limit": "^8.2.1",
     "framer-motion": "12.27.0",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.562.0",
     "multer": "^2.0.2",

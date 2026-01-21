@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { initDatabase } from './src/server/db.js';
@@ -27,7 +29,35 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// Security Middleware
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow resource loading
+  contentSecurityPolicy: false, // Disable CSP for now as it can break simple dashboards if not carefully tuned
+}));
+app.disable('x-powered-by'); // Hide Express
+app.use((req, res, next) => {
+  res.setHeader('X-Powered-By', 'MEY Agent');
+  next();
+});
+app.set('trust proxy', 1); // Trust first proxy (Cloudflare/Nginx)
+
+// Rate Limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // limit each IP to 500 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // limit login attempts
+  message: { error: 'Too many login attempts, please try again later.' }
+});
+
+// Apply Middleware
+app.use(limiter); // Global rate limit
 app.use(cors());
 app.use(express.json());
 
@@ -35,7 +65,7 @@ app.use(express.json());
 initDatabase();
 
 // Public API routes
-app.use('/api/auth', authRouter);
+app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/public/services', servicesRouter);
 app.use('/api/public/pings', pingsRouter);
 app.use('/api/public/categories', categoriesRouter);
