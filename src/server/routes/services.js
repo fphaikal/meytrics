@@ -70,7 +70,8 @@ router.post('/', (req, res) => {
         const {
             name, url, type = 'http', interval = 300, notify_down = true,
             timeout = 30, slow_threshold, http_method = 'GET', custom_headers = {},
-            follow_redirects = true, auth_type = 'none', auth_user, auth_pass
+            follow_redirects = true, auth_type = 'none', auth_user, auth_pass,
+            notification_repeat = 0, notification_delay = 0
         } = req.body;
 
         if (!name || !url) {
@@ -82,13 +83,14 @@ router.post('/', (req, res) => {
         const validTimeout = Math.min(60, Math.max(1, parseInt(timeout) || 30));
 
         const result = db.prepare(`
-      INSERT INTO services (name, url, type, interval, notify_down, timeout, slow_threshold, http_method, custom_headers, follow_redirects, auth_type, auth_user, auth_pass)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO services (name, url, type, interval, notify_down, timeout, slow_threshold, http_method, custom_headers, follow_redirects, auth_type, auth_user, auth_pass, notification_repeat, notification_delay)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
             name, url, type, validInterval, notify_down ? 1 : 0,
             validTimeout, slow_threshold || null, http_method,
             JSON.stringify(custom_headers), follow_redirects ? 1 : 0,
-            auth_type, auth_user || null, auth_pass || null
+            auth_type, auth_user || null, auth_pass || null,
+            parseInt(notification_repeat) || 0, parseInt(notification_delay) || 0
         );
 
         const newService = db.prepare('SELECT * FROM services WHERE id = ?').get(result.lastInsertRowid);
@@ -105,7 +107,8 @@ router.put('/:id', (req, res) => {
         const {
             name, url, type, interval, notify_down, category_id, paused,
             timeout, slow_threshold, http_method, custom_headers,
-            follow_redirects, auth_type, auth_user, auth_pass
+            follow_redirects, auth_type, auth_user, auth_pass,
+            notification_repeat, notification_delay
         } = req.body;
         const service = db.prepare('SELECT * FROM services WHERE id = ?').get(req.params.id);
 
@@ -127,7 +130,8 @@ router.put('/:id', (req, res) => {
       UPDATE services 
       SET name = ?, url = ?, type = ?, interval = ?, notify_down = ?, category_id = ?, paused = ?,
           timeout = ?, slow_threshold = ?, http_method = ?, custom_headers = ?,
-          follow_redirects = ?, auth_type = ?, auth_user = ?, auth_pass = ?
+          follow_redirects = ?, auth_type = ?, auth_user = ?, auth_pass = ?,
+          notification_repeat = ?, notification_delay = ?
       WHERE id = ?
     `).run(
             name || service.name,
@@ -145,6 +149,8 @@ router.put('/:id', (req, res) => {
             auth_type || service.auth_type,
             auth_user !== undefined ? auth_user : service.auth_user,
             auth_pass !== undefined ? auth_pass : service.auth_pass,
+            notification_repeat !== undefined ? parseInt(notification_repeat) : service.notification_repeat || 0,
+            notification_delay !== undefined ? parseInt(notification_delay) : service.notification_delay || 0,
             req.params.id
         );
 

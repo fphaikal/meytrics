@@ -19,14 +19,16 @@ import {
   Dropdown,
   DropdownTrigger,
   DropdownMenu,
-  DropdownItem
+  DropdownItem,
+  Select,
+  SelectItem
 } from "@heroui/react";
-import { MoreHorizontal, Pencil, Trash2, Zap } from 'lucide-react';
-import { toast } from 'sonner';
+import { MoreHorizontal, Pencil, Trash2, Zap, Webhook as WebhookIcon, Send, Hash, MessageSquare } from 'lucide-react';
+import { toast } from '../../lib/toast';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
 import type { Webhook } from '../../lib/types';
 
-export function WebhooksPage() {
+export function IntegrationsPage() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -36,7 +38,10 @@ export function WebhooksPage() {
     name: '',
     url: '',
     events: ['status_change'] as string[],
-    enabled: true
+    enabled: true,
+    type: 'custom',
+    telegram_bot_token: '',
+    telegram_chat_id: ''
   });
 
   // Delete confirmation state
@@ -48,7 +53,7 @@ export function WebhooksPage() {
       const data = await getWebhooks();
       setWebhooks(data);
     } catch (error) {
-      console.error('Failed to fetch webhooks:', error);
+      console.error('Failed to fetch integrations:', error);
     } finally {
       setLoading(false);
     }
@@ -59,17 +64,31 @@ export function WebhooksPage() {
   }, []);
 
   const resetForm = () => {
-    setFormData({ name: '', url: '', events: ['status_change'], enabled: true });
+    setFormData({
+      name: '', url: '', events: ['status_change'], enabled: true, type: 'custom',
+      telegram_bot_token: '', telegram_chat_id: ''
+    });
     setEditingWebhook(null);
   };
 
   const handleEdit = (webhook: Webhook) => {
     setEditingWebhook(webhook);
+
+    let config: any = {};
+    if (webhook.config) {
+      try {
+        config = typeof webhook.config === 'string' ? JSON.parse(webhook.config) : webhook.config;
+      } catch (e) { console.error("Error parsing config", e); }
+    }
+
     setFormData({
       name: webhook.name,
       url: webhook.url,
       events: webhook.events || ['status_change'],
-      enabled: webhook.enabled
+      enabled: webhook.enabled,
+      type: webhook.type || 'custom',
+      telegram_bot_token: config.telegram_bot_token || '',
+      telegram_chat_id: config.telegram_chat_id || ''
     });
     setShowForm(true);
   };
@@ -78,17 +97,35 @@ export function WebhooksPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      if (editingWebhook) {
-        await updateWebhook(editingWebhook.id, formData);
+      const dataToSubmit: any = {
+        name: formData.name,
+        events: formData.events,
+        enabled: formData.enabled,
+        type: formData.type,
+        config: {}
+      };
+
+      if (formData.type === 'telegram') {
+        dataToSubmit.url = `https://api.telegram.org/bot${formData.telegram_bot_token}/sendMessage`;
+        dataToSubmit.config = {
+          telegram_bot_token: formData.telegram_bot_token,
+          telegram_chat_id: formData.telegram_chat_id
+        };
       } else {
-        await createWebhook(formData);
+        dataToSubmit.url = formData.url;
+      }
+
+      if (editingWebhook) {
+        await updateWebhook(editingWebhook.id, dataToSubmit);
+      } else {
+        await createWebhook(dataToSubmit);
       }
       setShowForm(false);
       resetForm();
       fetchWebhooks();
-      toast.success(editingWebhook ? 'Webhook updated successfully' : 'Webhook created successfully');
+      toast.success(editingWebhook ? 'Integration updated successfully' : 'Integration created successfully');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save webhook');
+      toast.error(error instanceof Error ? error.message : 'Failed to save integration');
     } finally {
       setSaving(false);
     }
@@ -104,9 +141,9 @@ export function WebhooksPage() {
     try {
       await deleteWebhook(deleteId);
       fetchWebhooks();
-      toast.success('Webhook deleted successfully');
+      toast.success('Integration deleted successfully');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to delete webhook');
+      toast.error(error instanceof Error ? error.message : 'Failed to delete integration');
     } finally {
       setDeleting(false);
       setDeleteId(null);
@@ -116,9 +153,9 @@ export function WebhooksPage() {
   const handleTest = async (id: number) => {
     try {
       await testWebhook(id);
-      toast.success('Test webhook sent successfully');
+      toast.success('Test integration sent successfully');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to test webhook');
+      toast.error(error instanceof Error ? error.message : 'Failed to test integration');
     }
   };
 
@@ -139,12 +176,12 @@ export function WebhooksPage() {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Webhooks.</h1>
+        <h1 className="text-2xl font-bold text-foreground">Integrations.</h1>
         <Button
           color="primary"
           onPress={() => { resetForm(); setShowForm(true); }}
         >
-          + Add Webhook
+          + Add Integration
         </Button>
       </div>
 
@@ -153,30 +190,83 @@ export function WebhooksPage() {
           {(onClose) => (
             <>
               <ModalHeader>
-                {editingWebhook ? 'Edit Webhook' : 'Add Webhook'}
+                {editingWebhook ? 'Edit Integration' : 'Add Integration'}
               </ModalHeader>
               <ModalBody>
                 <form onSubmit={handleSubmit} id="webhook-form" className="flex flex-col gap-4">
+                  <Select
+                    label="Type"
+                    labelPlacement="outside"
+                    placeholder="Select integration type"
+                    selectedKeys={formData.type ? [formData.type] : ['custom']}
+                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    disallowEmptySelection
+                  >
+                    <SelectItem key="custom" startContent={<WebhookIcon className="w-4 h-4" />}>Webhook</SelectItem>
+                    <SelectItem key="telegram" startContent={<Send className="w-4 h-4" />}>Telegram</SelectItem>
+                    <SelectItem key="slack" startContent={<Hash className="w-4 h-4" />}>Slack</SelectItem>
+                    <SelectItem key="discord" startContent={<MessageSquare className="w-4 h-4" />}>Discord</SelectItem>
+                  </Select>
+
                   <Input
                     label="Name"
                     labelPlacement="outside"
-                    placeholder="Enter name webhook"
+                    placeholder="e.g. Production Alerts"
                     value={formData.name}
                     onValueChange={(value) => setFormData({ ...formData, name: value })}
                     isRequired
                   />
-                  <Input
-                    label="URL"
-                    labelPlacement="outside"
-                    type="url"
-                    value={formData.url}
-                    onValueChange={(value) => setFormData({ ...formData, url: value })}
-                    isRequired
-                    placeholder="https://..."
-                    description="Endpoint must accept HTTP POST requests"
-                  />
+
+                  {formData.type === 'telegram' ? (
+                    <>
+                      <Input
+                        label="Bot Token"
+                        labelPlacement="outside"
+                        placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                        value={formData.telegram_bot_token || ''}
+                        onValueChange={(value) => setFormData({ ...formData, telegram_bot_token: value })}
+                        isRequired
+                        description={
+                          <span>
+                            Start a chat with <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-primary hover:underline">@BotFather</a> to create a bot and get the token.
+                          </span>
+                        }
+                      />
+                      <Input
+                        label="Chat ID"
+                        labelPlacement="outside"
+                        placeholder="-100123456789"
+                        value={formData.telegram_chat_id || ''}
+                        onValueChange={(value) => setFormData({ ...formData, telegram_chat_id: value })}
+                        isRequired
+                        description={
+                          <span>
+                            Use <a href="https://t.me/getmyid_bot" target="_blank" rel="noreferrer" className="text-primary hover:underline">@getmyid_bot</a> or add your bot to a group to get the Chat ID.
+                          </span>
+                        }
+                      />
+                    </>
+                  ) : (
+                    <Input
+                      label={formData.type === 'custom' ? "Webhook URL" : "Webhook URL"}
+                      labelPlacement="outside"
+                      type="url"
+                      value={formData.url}
+                      onValueChange={(value) => setFormData({ ...formData, url: value })}
+                      isRequired
+                      placeholder={formData.type === 'custom' ? "https://..." : "https://hooks.slack.com/services/..."}
+                      description={
+                        formData.type === 'discord'
+                          ? "Discord Webhook URL (Server Settings > Integrations > Webhooks)"
+                          : formData.type === 'slack'
+                            ? "Slack Incoming Webhook URL"
+                            : "Endpoint must accept HTTP POST requests"
+                      }
+                    />
+                  )}
+
                   <div>
-                    <label className="block text-small font-medium text-foreground pb-2">Events</label>
+                    <label className="block text-small font-medium text-foreground pb-2">Trigger Events</label>
                     <div className="flex flex-wrap gap-2">
                       {['status_change', 'incident_created', 'incident_resolved', 'maintenance_scheduled'].map(event => (
                         <Button
@@ -214,18 +304,18 @@ export function WebhooksPage() {
         isOpen={!!deleteId}
         onClose={() => setDeleteId(null)}
         onConfirm={handleDelete}
-        title="Delete Webhook"
-        description="Are you sure you want to delete this webhook? This action cannot be undone."
+        title="Delete Integration"
+        description="Are you sure you want to delete this integration? This action cannot be undone."
         loading={deleting}
       />
 
       {webhooks.length === 0 ? (
         <div className="bg-content1 rounded-xl p-8 text-center">
-          <p className="text-default-500">No webhooks configured yet.</p>
+          <p className="text-default-500">No integrations configured yet.</p>
         </div>
       ) : (
         <Table
-          aria-label="Webhooks table"
+          aria-label="Integrations table"
           classNames={{
             wrapper: "bg-background rounded-xl border border-divider",
             th: "bg-default-100 text-default-600 font-semibold",
@@ -235,7 +325,8 @@ export function WebhooksPage() {
         >
           <TableHeader>
             <TableColumn>NAME</TableColumn>
-            <TableColumn>URL</TableColumn>
+            <TableColumn>TYPE</TableColumn>
+            <TableColumn>URL / TARGET</TableColumn>
             <TableColumn>STATUS</TableColumn>
             <TableColumn align="center">ACTIONS</TableColumn>
           </TableHeader>
@@ -243,6 +334,11 @@ export function WebhooksPage() {
             {webhooks.map((w) => (
               <TableRow key={w.id}>
                 <TableCell className="font-medium">{w.name}</TableCell>
+                <TableCell>
+                  <Chip size="sm" variant="flat" color="primary" className="capitalize">
+                    {w.type || 'Custom'}
+                  </Chip>
+                </TableCell>
                 <TableCell className="text-default-500 text-sm font-mono truncate max-w-xs">{w.url}</TableCell>
                 <TableCell>
                   <Chip
@@ -261,7 +357,7 @@ export function WebhooksPage() {
                           <MoreHorizontal className="w-4 h-4 text-default-500" />
                         </Button>
                       </DropdownTrigger>
-                      <DropdownMenu aria-label="Webhook actions">
+                      <DropdownMenu aria-label="Integration actions">
                         <DropdownItem key="test" startContent={<Zap className="w-4 h-4" />} onPress={() => handleTest(w.id)}>Test</DropdownItem>
                         <DropdownItem key="edit" startContent={<Pencil className="w-4 h-4" />} onPress={() => handleEdit(w)}>Edit</DropdownItem>
                         <DropdownItem key="delete" startContent={<Trash2 className="w-4 h-4" />} className="text-danger" color="danger" onPress={() => confirmDelete(w.id)}>Delete</DropdownItem>

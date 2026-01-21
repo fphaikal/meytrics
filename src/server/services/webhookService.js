@@ -99,6 +99,16 @@ function formatPayload(webhook, service, eventType, details) {
         ]
       };
 
+    case 'telegram':
+      const config = JSON.parse(webhook.config || '{}');
+      return {
+        chat_id: config.telegram_chat_id,
+        text: isDown
+          ? `🔴 *${service.name} is DOWN*\nURL: ${service.url}\nError: ${details}\n\n${pageTitle} • ${timestamp}`
+          : `🟢 *${service.name} is UP*\nURL: ${service.url}\nResponse Time: ${details}\n\n${pageTitle} • ${timestamp}`,
+        parse_mode: 'Markdown'
+      };
+
     default: // custom
       return {
         event: eventType,
@@ -130,7 +140,9 @@ async function sendWebhook(webhook, payload) {
     });
 
     if (!response.ok) {
-      console.error(`Webhook ${webhook.name} failed: ${response.status} ${response.statusText}`);
+      // Try to read error body for better debugging
+      const errorText = await response.text().catch(() => response.statusText);
+      console.error(`Webhook ${webhook.name} failed: ${response.status} ${errorText}`);
       return false;
     }
 
@@ -174,14 +186,15 @@ export function getWebhookById(id) {
 
 export function createWebhook(data) {
   const result = db.prepare(`
-        INSERT INTO webhooks (name, url, type, events, headers, enabled)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO webhooks (name, url, type, events, headers, config, enabled)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
     data.name,
     data.url,
     data.type || 'custom',
     JSON.stringify(data.events || ['down', 'recovery']),
     JSON.stringify(data.headers || {}),
+    JSON.stringify(data.config || {}),
     data.enabled !== false ? 1 : 0
   );
   return getWebhookById(result.lastInsertRowid);
@@ -198,6 +211,7 @@ export function updateWebhook(id, data) {
             type = COALESCE(?, type),
             events = COALESCE(?, events),
             headers = COALESCE(?, headers),
+            config = COALESCE(?, config),
             enabled = COALESCE(?, enabled)
         WHERE id = ?
     `).run(
@@ -206,6 +220,7 @@ export function updateWebhook(id, data) {
     data.type,
     data.events ? JSON.stringify(data.events) : null,
     data.headers ? JSON.stringify(data.headers) : null,
+    data.config ? JSON.stringify(data.config) : null,
     data.enabled !== undefined ? (data.enabled ? 1 : 0) : null,
     id
   );

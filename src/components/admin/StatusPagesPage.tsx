@@ -21,7 +21,7 @@ import {
 } from "@heroui/react";
 
 import { MoreHorizontal, ExternalLink, Globe } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import type { StatusPage, Service } from '../../lib/types';
 
 export function StatusPagesPage() {

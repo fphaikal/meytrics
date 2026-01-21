@@ -17,6 +17,14 @@ export async function fetchAPI(endpoint: string, options: RequestInit = {}) {
         headers
     });
 
+    if (response.status === 401 && endpoint !== '/api/auth/login') {
+        localStorage.removeItem('token');
+        if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+        }
+        throw new Error('Session expired');
+    }
+
     if (!response.ok) {
         const error = await response.json().catch(() => ({ error: 'Request failed' }));
         throw new Error(error.error || 'Request failed');
@@ -39,7 +47,9 @@ export const getPublicServices = () => fetchAPI('/api/public/services');
 
 // Services (admin)
 export const getServices = () => fetchAPI('/api/services');
-export const createService = (data: { name: string; url: string; type?: string; interval?: number; notify_down?: boolean; category_id?: number | null }) =>
+import type { ServiceUpdate } from './types';
+
+export const createService = (data: ServiceUpdate) =>
     fetchAPI('/api/services', { method: 'POST', body: JSON.stringify(data) });
 export const updateService = (id: number, data: Partial<{ name: string; url: string; type: string; interval: number; notify_down: boolean; paused: boolean; category_id: number | null }>) =>
     fetchAPI(`/api/services/${id}`, { method: 'PUT', body: JSON.stringify(data) });

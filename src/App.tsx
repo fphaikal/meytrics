@@ -1,15 +1,15 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { ToastProvider } from "@heroui/react";
 import { HomePage } from './components/HomePage';
 import { StatusPage } from './components/StatusPage';
 import { AdminDashboard } from './components/AdminDashboard';
 import { LoginPage } from './components/LoginPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
-import { Toaster } from 'sonner';
 
 export function App() {
   return (
     <BrowserRouter>
-      <Toaster position="top-right" richColors />
+      <ToastProvider placement="top-right" />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/status/:slug" element={<StatusPage />} />
@@ -26,5 +26,6 @@ export function App() {
     </BrowserRouter>
   );
 }
+
 
 export default App;

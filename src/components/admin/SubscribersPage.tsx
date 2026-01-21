@@ -10,7 +10,7 @@ import {
   Button,
   Chip
 } from "@heroui/react";
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import type { Subscriber } from '../../lib/types';
 
 export function SubscribersPage() {

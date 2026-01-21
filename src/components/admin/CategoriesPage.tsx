@@ -20,7 +20,7 @@ import {
   DropdownItem
 } from "@heroui/react";
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
 import type { Category } from '../../lib/types';
 

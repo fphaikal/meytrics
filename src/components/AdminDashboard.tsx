@@ -1,21 +1,23 @@
 import { useNavigate, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Tags } from 'lucide-react';
+import { Tags, Info, Share2 } from 'lucide-react';
 
 import { CategoriesPage } from './admin/CategoriesPage';
 import { TagsPage } from './admin/TagsPage';
 import { IncidentsPage } from './admin/IncidentsPage';
 import { MaintenancesPage } from './admin/MaintenancesPage';
-import { WebhooksPage } from './admin/WebhooksPage';
+import { IntegrationsPage } from './admin/IntegrationsPage';
 import { SubscribersPage } from './admin/SubscribersPage';
 import { ApiKeysPage } from './admin/ApiKeysPage';
 import { StatusOverridesPage } from './admin/StatusOverridesPage';
 import { StatusPagesPage } from './admin/StatusPagesPage';
 import { ServicesPage } from './admin/ServicesPage';
+import { AddServicePage } from './admin/AddServicePage';
 import { ServiceDetailPage } from './admin/ServiceDetailPage';
 import { EditServicePage } from './admin/EditServicePage';
 import { AnnouncementsPage } from './admin/AnnouncementsPage';
 import { EditStatusPagePage } from './admin/EditStatusPagePage';
 import { IncidentDetailPage } from './admin/IncidentDetailPage';
+import { AboutPage } from './admin/AboutPage';
 import { SettingsPage } from './admin/SettingsPage';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -106,11 +108,11 @@ export function AdminDashboard() {
 
           <p className="px-3 py-2 text-xs font-semibold text-default-400 uppercase tracking-wider mt-6">Notifications</p>
           <Link
-            to="/admin/webhooks"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive('/admin/webhooks') ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-default-600 hover:bg-default-100'}`}
+            to="/admin/integrations"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive('/admin/integrations') ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-default-600 hover:bg-default-100'}`}
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-            Webhooks
+            <Share2 className="w-5 h-5" />
+            Integrations
           </Link>
           <Link
             to="/admin/subscribers"
@@ -127,6 +129,13 @@ export function AdminDashboard() {
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" /></svg>
             Settings
+          </Link>
+          <Link
+            to="/admin/about"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive('/admin/about') ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-default-600 hover:bg-default-100'}`}
+          >
+            <Info className="w-5 h-5" />
+            About
           </Link>
         </nav>
 
@@ -169,6 +178,7 @@ export function AdminDashboard() {
         <div className="p-8">
           <Routes>
             <Route index element={<ServicesPage />} />
+            <Route path="/services/new" element={<AddServicePage />} />
             <Route path="/services/:id" element={<ServiceDetailPage />} />
             <Route path="/services/:id/edit" element={<EditServicePage />} />
             <Route path="/categories" element={<CategoriesPage />} />
@@ -177,13 +187,14 @@ export function AdminDashboard() {
             <Route path="incidents/:id" element={<IncidentDetailPage />} />
             <Route path="announcements" element={<AnnouncementsPage />} />
             <Route path="maintenances" element={<MaintenancesPage />} />
-            <Route path="webhooks" element={<WebhooksPage />} />
+            <Route path="integrations" element={<IntegrationsPage />} />
             <Route path="subscribers" element={<SubscribersPage />} />
             <Route path="api-keys" element={<ApiKeysPage />} />
             <Route path="status-overrides" element={<StatusOverridesPage />} />
             <Route path="status-pages" element={<StatusPagesPage />} />
             <Route path="status-pages/:id/edit" element={<EditStatusPagePage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="about" element={<AboutPage />} />
           </Routes>
         </div>
       </main>

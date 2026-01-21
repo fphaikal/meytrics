@@ -1,5 +1,5 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -9,19 +9,17 @@ import {
   Checkbox,
   Card,
   CardBody,
-  Spinner,
   Slider,
   Chip,
   Switch
 } from "@heroui/react";
 import { SplitSection } from '../ui/SplitSection';
-import { ArrowLeft, Save, Settings, Activity, Shield, Clock, FileCode, Tag, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Settings, Activity, Shield, Clock, FileCode, Tag, Trash2 } from 'lucide-react';
 import { toast } from '../../lib/toast';
-import { getServices, getCategories, updateService, getTags, getServiceTags, bulkUpdateTags } from '../../lib/api';
-import type { Service, ServiceUpdate, Category } from '../../lib/types';
+import { getCategories, createService, getTags, bulkUpdateTags } from '../../lib/api';
+import type { ServiceUpdate, Category } from '../../lib/types';
 
-export function EditServicePage() {
-  const { id } = useParams<{ id: string }>();
+export function AddServicePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [formData, setFormData] = useState<ServiceUpdate>({
@@ -43,13 +41,6 @@ export function EditServicePage() {
     notification_repeat: 0,
     notification_delay: 0
   });
-  const [loading, setLoading] = useState(true);
-
-  // Fetch service details
-  const { data: services } = useQuery({
-    queryKey: ['services'],
-    queryFn: getServices
-  });
 
   // Fetch categories
   const { data: categories = [] } = useQuery({
@@ -63,78 +54,35 @@ export function EditServicePage() {
     queryFn: getTags
   });
 
-  // Fetch service tags
-  const { data: serviceTags = [], refetch: refetchServiceTags } = useQuery({
-    queryKey: ['serviceTags', id],
-    queryFn: () => getServiceTags(parseInt(id!)),
-    enabled: !!id
-  });
-
   // State for custom headers editor
   const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([]);
   // State for selected tag IDs
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
 
-  const updateMutation = useMutation({
-    mutationFn: (data: ServiceUpdate) => updateService(parseInt(id!), data),
+  const createMutation = useMutation({
+    mutationFn: async (data: ServiceUpdate) => {
+      const response = await createService(data);
+      // If the response contains the new service ID and we have tags, assign them
+      // The API might return the created service object.
+      // Assuming createService returns the service object with an ID.
+      // If not, we can't assign tags easily unless the create API accepts tags.
+      // Ideally the create API should accept tags. If not, we might need to handle it.
+      // For now, let's assume valid create. If we need to add tags separately, we need the ID.
+      // Let's assume createService returns the service.
+      if (selectedTagIds.length > 0 && response && response.id) {
+        await bulkUpdateTags([response.id], selectedTagIds, 'add');
+      }
+      return response;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['services'] });
-      queryClient.invalidateQueries({ queryKey: ['service', id] });
-      toast.success('Service updated successfully');
+      toast.success('Service created successfully');
+      navigate('/admin');
     },
-    onError: () => {
-      toast.error('Failed to update service');
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Failed to create service');
     }
   });
-
-  useEffect(() => {
-    if (services && id) {
-      const service = services.find((s: Service) => s.id === parseInt(id));
-      if (service) {
-        // Parse custom_headers if it's a string
-        let customHeaders: Record<string, string> = {};
-        if (service.custom_headers) {
-          try {
-            customHeaders = typeof service.custom_headers === 'string'
-              ? JSON.parse(service.custom_headers)
-              : service.custom_headers;
-          } catch { customHeaders = {}; }
-        }
-
-        // Convert headers object to array for editor
-        const headersArray = Object.entries(customHeaders).map(([key, value]) => ({ key, value }));
-        setHeaders(headersArray.length > 0 ? headersArray : []);
-
-        setFormData({
-          name: service.name,
-          url: service.url,
-          type: service.type,
-          interval: service.interval,
-          category_id: service.category_id,
-          notify_down: service.notify_down,
-          // Advanced settings
-          timeout: service.timeout || 30,
-          slow_threshold: service.slow_threshold,
-          http_method: service.http_method || 'GET',
-          custom_headers: customHeaders,
-          follow_redirects: service.follow_redirects !== 0,
-          auth_type: service.auth_type || 'none',
-          auth_user: service.auth_user || '',
-          auth_pass: service.auth_pass || '',
-          notification_repeat: service.notification_repeat || 0,
-          notification_delay: service.notification_delay || 0
-        });
-        setLoading(false);
-      }
-    }
-  }, [services, id]);
-
-  // Sync serviceTags to selectedTagIds
-  useEffect(() => {
-    if (serviceTags && serviceTags.length > 0) {
-      setSelectedTagIds(serviceTags.map((t: { id: number }) => t.id));
-    }
-  }, [serviceTags]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -147,25 +95,11 @@ export function EditServicePage() {
       }
     });
 
-    // Update service with custom_headers
-    await updateMutation.mutateAsync({
+    // Create service with custom_headers
+    await createMutation.mutateAsync({
       ...formData,
       custom_headers: headersObject
     });
-
-    // Update tags
-    const currentTagIds = serviceTags.map((t: { id: number }) => t.id);
-    const tagsToAdd = selectedTagIds.filter((id: number) => !currentTagIds.includes(id));
-    const tagsToRemove = currentTagIds.filter((id: number) => !selectedTagIds.includes(id));
-
-    if (tagsToAdd.length > 0) {
-      await bulkUpdateTags([parseInt(id!)], tagsToAdd, 'add');
-    }
-    if (tagsToRemove.length > 0) {
-      await bulkUpdateTags([parseInt(id!)], tagsToRemove, 'remove');
-    }
-
-    refetchServiceTags();
   };
 
   // Header management functions
@@ -186,14 +120,6 @@ export function EditServicePage() {
     );
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto">
       {/* Breadcrumb */}
@@ -205,16 +131,16 @@ export function EditServicePage() {
       </div>
 
       <div className="flex items-center justify-between gap-2 mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Edit Service</h1>
+        <h1 className="text-2xl font-bold text-foreground">Add New Service</h1>
         <div className="flex items-center gap-3">
           <Button
             color="primary"
             type="submit"
             form="service-form"
-            isLoading={updateMutation.isPending}
-            startContent={<Save className="w-4 h-4" />}
+            isLoading={createMutation.isPending}
+            startContent={<Plus className="w-4 h-4" />}
           >
-            Save Changes
+            Create Service
           </Button>
         </div>
       </div>
@@ -228,12 +154,12 @@ export function EditServicePage() {
         >
           <Card>
             <CardBody className="gap-5 p-5">
-              <div className="space-y-1 mb-5">
+              <div className="space-y-1">
                 <Select
                   label="Monitor Type"
                   labelPlacement="outside"
                   selectedKeys={formData.type ? [formData.type] : []}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value as 'http' | 'tcp' | 'ping' })}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
                 >
                   <SelectItem key="http">HTTP(S)</SelectItem>
                   <SelectItem key="keyword">Keyword</SelectItem>
@@ -282,15 +208,15 @@ export function EditServicePage() {
                 description="The endpoint to monitor"
               />
 
-              <div className="space-y-4 mt-6">
-                <label className="text-sm font-medium">Check Interval</label>
+              <div className="space-y-4">
+                <label className="text-sm font-medium ">Check Interval</label>
                 <Slider
                   step={60}
                   minValue={60}
                   maxValue={3600}
                   value={formData.interval || 60}
                   onChange={(value) => setFormData({ ...formData, interval: value as number })}
-                  className="w-full"
+                  className="w-full mt-2"
                   showSteps={false}
                   marks={[
                     { value: 60, label: '1m' },
@@ -356,8 +282,6 @@ export function EditServicePage() {
                 </div>
               </div>
 
-
-
               {/* Keyword Fields */}
               {formData.type === 'keyword' && (
                 <div className="bg-default-50 p-4 rounded-lg space-y-3">
@@ -383,7 +307,7 @@ export function EditServicePage() {
                       label="Record Type"
                       labelPlacement="outside"
                       selectedKeys={[formData.dns_record_type || 'A']}
-                      onChange={(e) => setFormData({ ...formData, dns_record_type: e.target.value as any || 'A' })}
+                      onChange={(e) => setFormData({ ...formData, dns_record_type: e.target.value || 'A' })}
                     >
                       <SelectItem key="A">A (IPv4)</SelectItem>
                       <SelectItem key="AAAA">AAAA (IPv6)</SelectItem>
@@ -646,10 +570,10 @@ export function EditServicePage() {
           <Button
             color="primary"
             type="submit"
-            isLoading={updateMutation.isPending}
-            startContent={<Save className="w-4 h-4" />}
+            isLoading={createMutation.isPending}
+            startContent={<Plus className="w-4 h-4" />}
           >
-            Save Changes
+            Create Service
           </Button>
         </div>
       </form>

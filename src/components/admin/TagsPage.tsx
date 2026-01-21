@@ -20,7 +20,7 @@ import {
   DropdownItem
 } from "@heroui/react";
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
 
 interface Tag {
@@ -160,8 +160,8 @@ export function TagsPage() {
                           type="button"
                           onClick={() => setFormData({ ...formData, color })}
                           className={`w-8 h-8 rounded-full border-2 transition-all ${formData.color === color
-                              ? 'border-foreground scale-110'
-                              : 'border-transparent hover:scale-105'
+                            ? 'border-foreground scale-110'
+                            : 'border-transparent hover:scale-105'
                             }`}
                           style={{ backgroundColor: color }}
                         />

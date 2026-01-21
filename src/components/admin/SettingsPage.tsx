@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { getSettings, updateSettings, testSmtp } from '../../lib/api';
+import { getSettings, updateSettings, testSmtp, changePassword } from '../../lib/api';
 import type { Settings } from '../../lib/types';
 import {
   Button,
@@ -9,7 +9,7 @@ import {
   Card,
   CardBody
 } from "@heroui/react";
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { SplitSection } from '../ui/SplitSection';
 import { Shield, Database, Settings2, Mail } from 'lucide-react';
 
@@ -62,6 +62,41 @@ export function SettingsPage() {
       toast.error(error instanceof Error ? error.message : 'Failed to send test email');
     } finally {
       setTestingSmtp(false);
+    }
+  };
+
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      toast.error('All password fields are required');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error('New passwords do not match');
+      return;
+    }
+
+    if (passwordForm.newPassword.length < 6) {
+      toast.error('New password must be at least 6 characters');
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      await changePassword(passwordForm.currentPassword, passwordForm.newPassword);
+      toast.success('Password changed successfully');
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to change password');
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -149,6 +184,48 @@ export function SettingsPage() {
                 <SelectItem key="1440">24 hours</SelectItem>
                 <SelectItem key="0">Never</SelectItem>
               </Select>
+            </CardBody>
+          </Card>
+
+          <Card className="mt-4">
+            <CardBody className="p-5 gap-4">
+              <h3 className="text-md font-semibold text-foreground">Change Password</h3>
+              <Input
+                label="Current Password"
+                placeholder="Enter current password"
+                type="password"
+                labelPlacement="outside"
+                value={passwordForm.currentPassword}
+                onValueChange={(value) => setPasswordForm({ ...passwordForm, currentPassword: value })}
+              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="New Password"
+                  placeholder="Enter new password"
+                  type="password"
+                  labelPlacement="outside"
+                  value={passwordForm.newPassword}
+                  onValueChange={(value) => setPasswordForm({ ...passwordForm, newPassword: value })}
+                />
+                <Input
+                  label="Confirm New Password"
+                  placeholder="Confirm new password"
+                  type="password"
+                  labelPlacement="outside"
+                  value={passwordForm.confirmPassword}
+                  onValueChange={(value) => setPasswordForm({ ...passwordForm, confirmPassword: value })}
+                />
+              </div>
+              <div className="flex justify-end pt-2">
+                <Button
+                  color="secondary"
+                  onPress={handleChangePassword}
+                  isLoading={changingPassword}
+                  isDisabled={!passwordForm.currentPassword || !passwordForm.newPassword}
+                >
+                  Update Password
+                </Button>
+              </div>
             </CardBody>
           </Card>
         </SplitSection>

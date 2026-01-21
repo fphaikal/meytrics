@@ -2,13 +2,16 @@ export interface Service {
     id: number;
     name: string;
     url: string;
-    type: 'http' | 'tcp';
+    type: 'http' | 'tcp' | 'keyword' | 'dns';
     interval: number;
     notify_down: boolean;
     paused: boolean;
     category_id: number | null;
     current_status: 'up' | 'down' | 'paused' | null;
     uptime_percent: string;
+    keyword?: string; // Keyword monitoring
+    dns_record_type?: 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'NS'; // DNS monitoring
+    dns_expected_value?: string; // DNS monitoring
     tags?: Tag[];
     ssl_expiry?: string;
     domain_expiry?: string;
@@ -26,6 +29,8 @@ export interface Service {
     auth_type?: 'none' | 'basic' | 'bearer';
     auth_user?: string;
     auth_pass?: string;
+    notification_repeat?: number;
+    notification_delay?: number;
     created_at: string;
 }
 
@@ -162,6 +167,7 @@ export interface Webhook {
     type: 'discord' | 'slack' | 'custom';
     events: string[];
     headers: Record<string, string>;
+    config?: any;
     enabled: boolean;
     created_at: string;
 }
@@ -235,12 +241,15 @@ export interface Tag {
 export interface ServiceUpdate {
     name?: string;
     url?: string;
-    type?: 'http' | 'tcp' | 'ping';
+    type?: 'http' | 'tcp' | 'ping' | 'keyword' | 'dns';
     interval?: number;
     notify_down?: boolean;
     category_id?: number | null;
     tags?: string[];
     paused?: boolean;
+    keyword?: string;
+    dns_record_type?: string;
+    dns_expected_value?: string;
     ssl_expiry?: string;
     domain_expiry?: string;
     region?: string;
@@ -253,5 +262,7 @@ export interface ServiceUpdate {
     auth_type?: 'none' | 'basic' | 'bearer';
     auth_user?: string;
     auth_pass?: string;
+    notification_repeat?: number;
+    notification_delay?: number;
 }
 

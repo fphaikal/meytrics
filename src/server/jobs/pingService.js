@@ -22,7 +22,7 @@ async function checkService(service) {
   let responseTime = null;
 
   try {
-    if (service.type === 'http') {
+    if (service.type === 'http' || service.type === 'keyword') {
       const controller = new AbortController();
       const timeoutMs = (service.timeout || 30) * 1000;
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -57,6 +57,13 @@ async function checkService(service) {
       if (!response.ok) {
         status = 'down';
         error = `HTTP ${response.status} ${response.statusText}`;
+      } else if (service.type === 'keyword' && service.keyword) {
+        // Keyword monitoring check
+        const text = await response.text();
+        if (!text.includes(service.keyword)) {
+          status = 'down';
+          error = `Keyword "${service.keyword}" not found in response`;
+        }
       }
     } else if (service.type === 'tcp') {
       // For TCP, we just check if we can connect
@@ -83,6 +90,51 @@ async function checkService(service) {
           reject(new Error('Connection timeout'));
         });
       });
+    } else if (service.type === 'dns') {
+      const { resolve4, resolve6, resolveCname, resolveMx, resolveTxt, resolveNs } = await import('dns/promises');
+      const hostname = service.url.replace(/^https?:\/\//, '').replace(/\/$/, ''); // Remove protocol/path if user added it
+
+      const recordType = service.dns_record_type || 'A';
+
+      let records;
+      switch (recordType) {
+        case 'A': records = await resolve4(hostname); break;
+        case 'AAAA': records = await resolve6(hostname); break;
+        case 'CNAME': records = await resolveCname(hostname); break;
+        case 'MX': records = await resolveMx(hostname); break;
+        case 'TXT': records = await resolveTxt(hostname); break;
+        case 'NS': records = await resolveNs(hostname); break;
+        default: records = await resolve4(hostname);
+      }
+
+      responseTime = Date.now() - startTime;
+
+      // If records found, it's UP.
+      // If specific value expected, check it.
+      if (service.dns_expected_value) {
+        const expected = service.dns_expected_value;
+        let found = false;
+
+        // Helper to check standard arrays (A, AAAA, CNAME, NS)
+        if (Array.isArray(records)) {
+          // MX records are objects { exchange, priority }
+          // TXT records are arrays of arrays (chunks)
+
+          if (recordType === 'MX') {
+            found = records.some(r => r.exchange.includes(expected));
+          } else if (recordType === 'TXT') {
+            found = records.some(r => r.flat().join('').includes(expected));
+          } else {
+            // Simple string arrays
+            found = records.some(r => r.includes(expected));
+          }
+        }
+
+        if (!found) {
+          status = 'down';
+          error = `DNS ${recordType} record does not match expected value: ${expected}`;
+        }
+      }
     }
   } catch (err) {
     status = 'down';
@@ -103,26 +155,82 @@ async function checkService(service) {
   // 1. Handle DOWN state
   if (status === 'down') {
     // Check if we already have an open incident for this service
-    const openIncident = db.prepare(`
-      SELECT id FROM service_incidents 
+    let openIncident = db.prepare(`
+      SELECT id, started_at FROM service_incidents 
       WHERE service_id = ? AND status = 'down' AND ended_at IS NULL
     `).get(service.id);
 
-    // If no open incident, create one (regardless of notifications/first run)
+    // If no open incident, create one
     if (!openIncident) {
       db.prepare(`
         INSERT INTO service_incidents (service_id, status, started_at, error_message)
         VALUES (?, 'down', datetime('now'), ?)
       `).run(service.id, error);
+
+      // Fetch the newly created incident
+      openIncident = db.prepare(`
+        SELECT id, started_at FROM service_incidents 
+        WHERE service_id = ? AND status = 'down' AND ended_at IS NULL
+      `).get(service.id);
+
       console.log(`📝 Incident recorded for ${service.name}`);
     }
 
-    // Handle Notifications (only on transition from UP to DOWN)
-    // We check !isFirstRun to avoid spamming alerts on server restart if it was already down
-    if (!isFirstRun && prevStatus === 'up' && service.notify_down) {
-      console.log(`🔴 Service ${service.name} went DOWN`);
-      sendDownAlert(service, error);
-      triggerWebhooks('down', service, error);
+    // Handle Notifications
+    if (service.notify_down) {
+      // 1. Check Notification Delay
+      const startedAt = new Date(openIncident.started_at + (openIncident.started_at.endsWith('Z') ? '' : 'Z')).getTime();
+      const now = Date.now();
+      const delayMs = (service.notification_delay || 0) * 1000;
+
+      // If we are within the delay period, do NOT alert yet
+      if (now - startedAt < delayMs) {
+        // console.log(`⏳ Delaying alert for ${service.name} (waiting ${service.notification_delay}s)`);
+        // Commented out to reduce noise
+      } else {
+        // 2. Check Last Alert for Repeat Logic
+        const lastAlert = db.prepare(`
+          SELECT created_at FROM alert_history 
+          WHERE service_id = ? AND type IN ('down', 'down-repeat') 
+          ORDER BY created_at DESC LIMIT 1
+        `).get(service.id);
+
+        let shouldSendAlert = false;
+        let alertType = 'down';
+
+        if (!lastAlert) {
+          // Never alerted -> Send
+          shouldSendAlert = true;
+        } else {
+          const lastAlertTime = new Date(lastAlert.created_at + (lastAlert.created_at.endsWith('Z') ? '' : 'Z')).getTime();
+
+          // If last alert was BEFORE this incident started, it's a new incident -> Send
+          // (allowing 5s buffer for clock skew)
+          if (lastAlertTime < (startedAt - 5000)) {
+            shouldSendAlert = true;
+          }
+          // If alert is part of this incident, check repeat
+          else if (service.notification_repeat > 0) {
+            const repeatMs = service.notification_repeat * 1000;
+            if (now - lastAlertTime >= repeatMs) {
+              shouldSendAlert = true;
+              alertType = 'down-repeat';
+            }
+          }
+        }
+
+        if (shouldSendAlert) {
+          console.log(`🔴 Sending ${alertType} alert for ${service.name}`);
+          sendDownAlert(service, error);
+          triggerWebhooks('down', service, error);
+
+          // Record alert to history
+          db.prepare(`
+             INSERT INTO alert_history (service_id, type, message)
+             VALUES (?, ?, ?)
+           `).run(service.id, alertType, `Service is down: ${error}`);
+        }
+      }
     }
   }
 

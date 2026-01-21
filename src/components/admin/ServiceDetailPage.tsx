@@ -15,8 +15,8 @@ import {
   TableCell,
   Divider
 } from "@heroui/react";
-import { ArrowLeft, ExternalLink, Pause, Play, Edit, RefreshCw, Activity, ShieldCheck, Lock } from 'lucide-react';
-import { toast } from 'sonner';
+import { ArrowLeft, ExternalLink, Pause, Play, Edit, RefreshCw, Activity, ShieldCheck, Lock, Clock, Calendar, AlertTriangle, CheckCircle, BarChart, Globe, Server, ArrowUp, ArrowDown } from 'lucide-react';
+import { toast } from '../../lib/toast';
 import { getServices, getServicePings, getSettings, updateService, getServiceIncidents, getServicePingSummary } from '../../lib/api';
 import type { Service, Ping, ServiceIncident } from '../../lib/types';
 import { StatusIndicator } from '../StatusIndicator';
@@ -222,14 +222,18 @@ export function ServiceDetailPage() {
           {/* Status Cards Row */}
           <div className="grid grid-cols-3 gap-4 ">
             {/* Current Status */}
-            <Card
-              shadow='md'>
+            <Card shadow='md'>
               <CardBody className="py-4">
                 <div className="flex justify-between items-start">
                   <div>
-                    <p className="text-sm font-medium text-default-600">Current {service.current_status} for</p>
+                    <p className="text-sm font-medium text-default-600 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      Current {service.current_status} for
+                    </p>
                     <div className={`text-2xl font-bold mt-1 capitalize ${service.current_status === 'up' ? 'text-emerald-500' : service.current_status === 'down' ? 'text-danger' : 'text-warning'}`}>
                       {(() => {
+                        if (service.paused) return 'Monitoring Paused';
+
                         const status = service.current_status;
                         let startTime: Date;
 
@@ -246,9 +250,8 @@ export function ServiceDetailPage() {
 
                           startTime = lastIncident ? new Date(lastIncident.ended_at!.replace(' ', 'T') + 'Z') : new Date(service.created_at.replace(' ', 'T') + 'Z');
                         } else {
-                          // If PAUSED or unknown, just use created_at for now or 0
+                          // If unknown, just use created_at for now or 0
                           startTime = new Date(service.created_at.replace(' ', 'T') + 'Z');
-
                         }
 
                         const diffMs = Math.max(0, now.getTime() - startTime.getTime());
@@ -268,13 +271,17 @@ export function ServiceDetailPage() {
             </Card>
 
             {/* Last Check */}
-            <Card
-              shadow='md'>
-              <CardBody className="p-4">
-                <p className="text-sm text-default-500 mb-1">Last check</p>
+            <Card shadow='md' className="relative overflow-hidden">
+              <CardBody className="p-4 z-10">
+                <div className="flex items-center gap-2 mb-1 text-default-500">
+                  <Clock className="w-4 h-4" />
+                  <p className="text-sm">Last check</p>
+                </div>
                 <p className="text-xl font-semibold text-foreground">
                   {pings.length > 0 ? (
                     (() => {
+                      if (service.paused) return 'Paused';
+
                       const lastCheck = new Date(pings[0].created_at.replace(' ', 'T') + 'Z');
                       const diffInSeconds = Math.floor((now.getTime() - lastCheck.getTime()) / 1000);
 
@@ -290,14 +297,17 @@ export function ServiceDetailPage() {
                   Every {service.interval}s
                 </p>
               </CardBody>
+              <Clock className="absolute -bottom-4 -right-4 w-24 h-24 text-default-100 dark:text-default-50/5 z-0" />
             </Card>
 
             {/* Last 24 Hours */}
-            <Card
-              shadow='md'>
+            <Card shadow='md'>
               <CardBody className="p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm text-default-500">Last 24 hours</p>
+                  <div className="flex items-center gap-2 text-default-500">
+                    <Activity className="w-4 h-4" />
+                    <p className="text-sm">Last 24 hours</p>
+                  </div>
                   <Chip size="sm" variant="flat" color="success">{stats.uptime}%</Chip>
                 </div>
                 {renderStatusBars()}
@@ -306,39 +316,46 @@ export function ServiceDetailPage() {
           </div>
           {/* Stats Row */}
           <div className="grid grid-cols-3 gap-4">
-            <Card
-
-              shadow='md'>
-              <CardBody className="p-4">
-                <p className="text-sm text-default-500 mb-1">Last 7 days</p>
+            <Card shadow='md' className="relative overflow-hidden">
+              <CardBody className="p-4 z-10">
+                <div className="flex items-center gap-2 mb-1 text-default-500">
+                  <Calendar className="w-4 h-4" />
+                  <p className="text-sm">Last 7 days</p>
+                </div>
                 <p className="text-2xl font-bold text-success">{service.uptime_percent || '--'}%</p>
               </CardBody>
+              <Calendar className="absolute -bottom-2 -right-2 w-16 h-16 text-success-50 dark:text-success-900/20 z-0" />
             </Card>
-            <Card
-
-              shadow='md'>
-              <CardBody className="p-4">
-                <p className="text-sm text-default-500 mb-1">Last 30 days</p>
+            <Card shadow='md' className="relative overflow-hidden">
+              <CardBody className="p-4 z-10">
+                <div className="flex items-center gap-2 mb-1 text-default-500">
+                  <Calendar className="w-4 h-4" />
+                  <p className="text-sm">Last 30 days</p>
+                </div>
                 <p className="text-2xl font-bold text-success">{service.uptime_percent || '--'}%</p>
               </CardBody>
+              <Calendar className="absolute -bottom-2 -right-2 w-16 h-16 text-success-50 dark:text-success-900/20 z-0" />
             </Card>
-            <Card
-
-              shadow='md'>
-              <CardBody className="p-4">
-                <p className="text-sm text-default-500 mb-1">Incidents</p>
-                <p className="text-2xl font-bold text-foreground">0</p>
+            <Card shadow='md' className="relative overflow-hidden">
+              <CardBody className="p-4 z-10">
+                <div className="flex items-center gap-2 mb-1 text-default-500">
+                  <AlertTriangle className="w-4 h-4" />
+                  <p className="text-sm">Incidents</p>
+                </div>
+                <p className="text-2xl font-bold text-foreground">{incidents.length}</p>
               </CardBody>
+              <AlertTriangle className="absolute -bottom-2 -right-2 w-16 h-16 text-default-100 dark:text-default-50/5 z-0" />
             </Card>
           </div>
 
           {/* Response Time Chart */}
-          <Card
-
-            shadow='md'>
+          <Card shadow='md'>
             <CardBody className="p-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Response time</h3>
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <BarChart className="w-5 h-5 text-primary" />
+                  Response time
+                </h3>
                 <div className="flex gap-2">
                   {(['1h', '24h', '7d', '30d'] as const).map((range) => (
                     <Button
@@ -362,17 +379,27 @@ export function ServiceDetailPage() {
 
 
               {/* Response Time Stats */}
+              {/* Response Time Stats */}
               <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-divider">
-                <div className="text-center">
-                  <p className="text-sm text-default-500">Average</p>
+                <div className="flex flex-col items-center justify-center p-2">
+                  <div className="flex items-center gap-2 mb-1 text-default-500">
+                    <Activity className="w-4 h-4" />
+                    <p className="text-sm">Average</p>
+                  </div>
                   <p className="text-xl font-semibold text-foreground">{stats.avg} ms</p>
                 </div>
-                <div className="text-center">
-                  <p className="text-sm text-success">Minimum</p>
+                <div className="flex flex-col items-center justify-center p-2">
+                  <div className="flex items-center gap-2 mb-1 text-success">
+                    <ArrowDown className="w-4 h-4" />
+                    <p className="text-sm">Minimum</p>
+                  </div>
                   <p className="text-xl font-semibold text-success">{stats.min} ms</p>
                 </div>
-                <div className="text-center">
-                  <p className="text-sm text-default-500">Maximum</p>
+                <div className="flex flex-col items-center justify-center p-2">
+                  <div className="flex items-center gap-2 mb-1 text-default-500">
+                    <ArrowUp className="w-4 h-4" />
+                    <p className="text-sm">Maximum</p>
+                  </div>
                   <p className="text-xl font-semibold text-foreground">{stats.max} ms</p>
                 </div>
               </div>
@@ -380,12 +407,13 @@ export function ServiceDetailPage() {
           </Card>
 
           {/* Latest Incidents */}
-          <Card
-
-            shadow='md'>
+          <Card shadow='md'>
             <CardBody className="p-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Latest incidents</h3>
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-warning" />
+                  Latest incidents
+                </h3>
                 <Chip size="sm" variant="flat">{incidents.length} total</Chip>
               </div>
               {incidents.length === 0 ? (
@@ -453,6 +481,7 @@ export function ServiceDetailPage() {
           <Card>
             <CardBody className="p-4">
               <div className="flex items-center gap-2 mb-4">
+                <Globe className="w-5 h-5 text-primary" />
                 <h3 className="text-lg font-bold text-foreground">Domain & SSL.</h3>
               </div>
 
@@ -504,6 +533,7 @@ export function ServiceDetailPage() {
           <Card>
             <CardBody className="p-4">
               <div className="flex items-center gap-2 mb-4">
+                <Server className="w-5 h-5 text-primary" />
                 <h3 className="text-lg font-bold text-foreground">Server Location.</h3>
               </div>
 

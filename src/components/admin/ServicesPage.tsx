@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, type FormEvent } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueries, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,12 +23,12 @@ import {
   Tooltip,
 } from "@heroui/react";
 import { Search, Plus, MoreHorizontal, ChevronDown, FolderOpen, Tags, Globe, Pause, Play, RotateCcw, Trash2, Tag } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 
 import { StatusIndicator } from '../StatusIndicator';
 
 import {
-  getServices, createService, updateService, deleteService, getCategories, getServicePings,
+  getServices, deleteService, getCategories, getServicePings,
   bulkUpdateCategory, bulkPauseServices, bulkStartServices, bulkResetStats, bulkDeleteServices,
   getStatusPages, getStatusPageServiceIds, updateStatusPageServiceIds, getSettings, getTags
 } from '../../lib/api';
@@ -81,17 +81,6 @@ export function ServicesPage() {
     return map;
   }, [services, pingQueries]);
 
-  const [showForm, setShowForm] = useState(false);
-  const [editingService, setEditingService] = useState<Service | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    url: '',
-    type: 'http',
-    interval: 300,
-    notify_down: true,
-    category_id: null as number | null
-  });
-  const [saving, setSaving] = useState(false);
   const [filterValue, setFilterValue] = useState("");
   const [sortOrder, setSortOrder] = useState<"down_first" | "up_first" | "name">("down_first");
   const [selectedServices, setSelectedServices] = useState<Set<number>>(new Set());
@@ -106,29 +95,7 @@ export function ServicesPage() {
   const [statusPages, setStatusPages] = useState<StatusPage[]>([]);
   const [selectedStatusPageId, setSelectedStatusPageId] = useState<number | null>(null);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      if (editingService) {
-        await updateService(editingService.id, formData);
-      } else {
-        await createService(formData);
-      }
-      setEditingService(null);
-      resetForm();
-      queryClient.invalidateQueries({ queryKey: ['services'] });
-      toast.success(editingService ? 'Service updated successfully' : 'Service created successfully');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save service');
-    } finally {
-      setSaving(false);
-    }
-  };
 
-  const resetForm = () => {
-    setFormData({ name: '', url: '', type: 'http', interval: 300, notify_down: true, category_id: null });
-  };
 
   const handleEdit = (service: Service) => {
     navigate(`/admin/services/${service.id}/edit`);
@@ -427,7 +394,7 @@ export function ServicesPage() {
           <Button
             color="primary"
             startContent={<Plus className="w-4 h-4" />}
-            onPress={() => { resetForm(); setEditingService(null); setShowForm(true); }}
+            onPress={() => navigate('/admin/services/new')}
           >
             New
           </Button>
@@ -493,9 +460,6 @@ export function ServicesPage() {
               </DropdownMenu>
             </Dropdown>
           </div>
-          <Button size="sm" variant="flat" className="text-default-600">
-            Show groups
-          </Button>
           <div className="flex-1" />
           <Input
             size="sm"
@@ -557,7 +521,7 @@ export function ServicesPage() {
             filteredServices.map(service => (
               <div
                 key={service.id}
-                className={`flex items-center gap-4 p-4 bg-background rounded-lg border transition-colors ${selectedServices.has(service.id)
+                className={`flex items-center gap-4 p-3 bg-background rounded-lg border transition-colors ${selectedServices.has(service.id)
                   ? 'border-primary bg-primary/5'
                   : 'border-divider hover:border-primary/50'
                   }`}
@@ -703,96 +667,7 @@ export function ServicesPage() {
         </Card>
       </div>
 
-      {/* Modal */}
-      <Modal isOpen={showForm} onOpenChange={setShowForm}
-        backdrop="opaque">
-        <ModalContent>
-          {(onClose) => (
-            <>
-              <ModalHeader className="flex flex-col gap-1">
-                {editingService ? 'Edit Service' : 'Add New Service'}
-              </ModalHeader>
-              <ModalBody>
-                <form onSubmit={handleSubmit} id="service-form" className="flex flex-col gap-4">
-                  <Input
-                    label="Name"
-                    labelPlacement="outside"
-                    value={formData.name}
-                    onValueChange={(value) => setFormData({ ...formData, name: value })}
-                    placeholder="My Service"
-                    isRequired
-                  />
-                  <Input
-                    label="URL"
-                    labelPlacement="outside"
-                    value={formData.url}
-                    onValueChange={(value) => setFormData({ ...formData, url: value })}
-                    placeholder="https://example.com"
-                    isRequired
-                  />
-                  <div className="flex gap-4">
-                    <Select
-                      label="Type"
-                      labelPlacement="outside"
-                      placeholder="Select type"
-                      selectedKeys={[formData.type]}
-                      onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                      className="max-w-xs"
-                    >
-                      <SelectItem key="http">HTTP</SelectItem>
-                      <SelectItem key="tcp">TCP</SelectItem>
-                    </Select>
-                    <Select
-                      label="Interval"
-                      labelPlacement="outside"
-                      placeholder="Select interval"
-                      selectedKeys={[formData.interval.toString()]}
-                      onChange={(e) => setFormData({ ...formData, interval: parseInt(e.target.value) })}
-                    >
-                      <SelectItem key="60">1 minute</SelectItem>
-                      <SelectItem key="180">3 minutes</SelectItem>
-                      <SelectItem key="300">5 minutes</SelectItem>
-                      <SelectItem key="600">10 minutes</SelectItem>
-                      <SelectItem key="900">15 minutes</SelectItem>
-                      <SelectItem key="1800">30 minutes</SelectItem>
-                      <SelectItem key="3600">1 hour</SelectItem>
-                    </Select>
-                  </div>
 
-                  <Select
-                    label="Category"
-                    labelPlacement="outside"
-                    placeholder="Select category"
-                    selectedKeys={formData.category_id ? [formData.category_id.toString()] : ["no_category"]}
-                    onChange={(e) => setFormData({ ...formData, category_id: e.target.value === "no_category" ? null : parseInt(e.target.value) })}
-                  >
-                    {[
-                      <SelectItem key="no_category">No category</SelectItem>,
-                      ...categories.map((cat: any) => (
-                        <SelectItem key={cat.id.toString()}>{cat.name}</SelectItem>
-                      ))
-                    ]}
-                  </Select>
-                  <Checkbox
-                    isSelected={formData.notify_down}
-                    onValueChange={(isSelected) => setFormData({ ...formData, notify_down: isSelected })}
-                  >
-                    Send notification when service goes down
-                  </Checkbox>
-                </form>
-              </ModalBody>
-              <ModalFooter>
-                <Button color="danger" variant="light" onPress={onClose}>
-                  Cancel
-                </Button>
-                <Button color="primary" type="submit" form="service-form" isLoading={saving}>
-                  {editingService ? 'Update' : 'Add'}
-                </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
-      </Modal>
 
       {/* Category Modal */}
       <Modal isOpen={showCategoryModal} onOpenChange={setShowCategoryModal}>

@@ -370,7 +370,34 @@ export function initDatabase() {
   try {
     db.prepare('ALTER TABLE services ADD COLUMN auth_pass TEXT').run();
   } catch (e) { }
-  console.log('📦 Migration: Added Advanced Monitoring columns to services table');
+
+  // Migration for Keyword and DNS Monitoring
+  try {
+    db.prepare('ALTER TABLE services ADD COLUMN keyword TEXT').run();
+  } catch (e) { }
+  try {
+    db.prepare('ALTER TABLE services ADD COLUMN dns_record_type TEXT DEFAULT \'A\'').run();
+  } catch (e) { }
+  try {
+    db.prepare('ALTER TABLE services ADD COLUMN dns_expected_value TEXT').run();
+  } catch (e) { }
+
+  console.log('📦 Migration: Added columns for Keyword and DNS monitoring');
+
+  // Migration for Notification Settings
+  try {
+    db.prepare('ALTER TABLE services ADD COLUMN notification_repeat INTEGER DEFAULT 0').run();
+  } catch (e) { }
+  try {
+    db.prepare('ALTER TABLE services ADD COLUMN notification_delay INTEGER DEFAULT 0').run();
+  } catch (e) { }
+  console.log('📦 Migration: Added columns for Notification settings');
+
+  // Migration for Webhook Configuration
+  try {
+    db.prepare('ALTER TABLE webhooks ADD COLUMN config TEXT DEFAULT "{}"').run();
+    console.log('📦 Migration: Added config column to webhooks table');
+  } catch (e) { }
 
   // Create indexes
   db.exec(`

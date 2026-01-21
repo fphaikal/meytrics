@@ -25,7 +25,7 @@ import {
   DropdownMenu,
   DropdownItem
 } from "@heroui/react";
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
 import { MessageSquarePlus, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import type { Incident, Service } from '../../lib/types';

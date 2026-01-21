@@ -16,7 +16,7 @@ import {
   Input,
   Chip
 } from "@heroui/react";
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import type { ApiKey } from '../../lib/types';
 
 export function ApiKeysPage() {
