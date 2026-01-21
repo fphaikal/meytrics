@@ -45,7 +45,7 @@ export async function sendDownAlert(service, error) {
 
   try {
     await transporter.sendMail({
-      from: settings.smtp_from || settings.smtp_user,
+      from: settings.smtp_from_name ? `"${settings.smtp_from_name}" <${settings.smtp_from || settings.smtp_user}>` : (settings.smtp_from || settings.smtp_user),
       to: recipients.join(', '),
       subject: `🔴 Service Down: ${service.name}`,
       html: `
@@ -96,7 +96,7 @@ export async function sendRecoveryAlert(service, responseTime) {
 
   try {
     await transporter.sendMail({
-      from: settings.smtp_from || settings.smtp_user,
+      from: settings.smtp_from_name ? `"${settings.smtp_from_name}" <${settings.smtp_from || settings.smtp_user}>` : (settings.smtp_from || settings.smtp_user),
       to: recipients.join(', '),
       subject: `🟢 Service Recovered: ${service.name}`,
       html: `
@@ -141,7 +141,7 @@ export async function sendTestEmail(email) {
   const settings = getSettings();
 
   await transporter.sendMail({
-    from: settings.smtp_from || settings.smtp_user,
+    from: settings.smtp_from_name ? `"${settings.smtp_from_name}" <${settings.smtp_from || settings.smtp_user}>` : (settings.smtp_from || settings.smtp_user),
     to: email,
     subject: '📊 MEYTRICS - Test Email',
     html: `

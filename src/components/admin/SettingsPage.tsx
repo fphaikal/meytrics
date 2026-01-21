@@ -249,6 +249,13 @@ export function SettingsPage() {
                 onValueChange={(value) => setSettings({ ...settings, smtp_from: value })}
               />
               <Input
+                label="From Name"
+                placeholder="MEYTRICS Alerts"
+                labelPlacement="outside"
+                value={settings.smtp_from_name || ''}
+                onValueChange={(value) => setSettings({ ...settings, smtp_from_name: value })}
+              />
+              <Input
                 label="Notification Emails"
                 placeholder="admin@example.com, team@example.com"
                 value={settings.notification_emails || ''}

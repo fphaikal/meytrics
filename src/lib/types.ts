@@ -89,6 +89,7 @@ export interface Settings {
     smtp_user: string;
     smtp_pass: string;
     smtp_from: string;
+    smtp_from_name: string;
     notification_emails: string;
 
     // Security

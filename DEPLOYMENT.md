@@ -48,6 +48,16 @@ If you don't want to install Docker Desktop, you can let GitHub build the image 
     -   `DOCKERHUB_TOKEN`: Your Docker Hub Access Token (Get it from Docker Hub Account Settings > Security).
 4.  Once set, every time you push to the `main` branch, GitHub will automatically build and push your image to Docker Hub!
 
+## Method 3: Official Release (Advanced)
+
+To create a proper release (e.g., v1.0.0) with changelogs and publish to both Docker Hub and GitHub Container Registry:
+
+1.  **Update Version**: `npm version patch` (or minor/major).
+2.  **Push Tags**: `git push --follow-tags`
+3.  **Result**:
+    -   A new **Release** will be created on GitHub with automatic release notes.
+    -   Images will be pushed to Docker Hub and GHCR with the specific version tag (e.g., `v1.0.0`) and `latest`.
+
 ## Sharing with Others
 
 Users can now pull and run your application using only `docker-compose.yml` (without needing the source code).

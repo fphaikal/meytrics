@@ -635,9 +635,9 @@ export function ServicesPage() {
       {/* Sidebar */}
       <div className="w-64 shrink-0 hidden xl:block space-y-4">
         {/* Current Status Card */}
-        <Card>
+        <Card className="p-3">
           <CardHeader className="pb-2">
-            <h3 className="text-sm font-semibold text-foreground">Current status.</h3>
+            <h3 className="text-lg font-semibold text-foreground">Current status.</h3>
           </CardHeader>
           <CardBody className="pt-0">
             {/* Status Circle */}
@@ -673,9 +673,9 @@ export function ServicesPage() {
         </Card>
 
         {/* Last 24 Hours Card */}
-        <Card>
+        <Card className="p-3">
           <CardHeader className="pb-2">
-            <h3 className="text-sm font-semibold text-foreground">Last 24 hours.</h3>
+            <h3 className="text-lg font-semibold text-foreground">Last 24 hours.</h3>
           </CardHeader>
           <CardBody className="pt-0 space-y-3">
             <div className="flex justify-between">
