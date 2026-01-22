@@ -1,9 +1,11 @@
 import { db } from '../db.js';
 
 // Get retention setting value, with defaults
-function getRetentionDays(key, defaultValue) {
+async function getRetentionDays(key, defaultValue) {
   try {
-    const result = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+    const result = await db.setting.findUnique({
+      where: { key }
+    });
     if (result && result.value) {
       const days = parseInt(result.value, 10);
       return isNaN(days) ? defaultValue : days;
@@ -15,18 +17,22 @@ function getRetentionDays(key, defaultValue) {
 }
 
 // Cleanup old ping data
-function cleanupPings() {
-  const retentionDays = getRetentionDays('ping_retention_days', 30);
+async function cleanupPings() {
+  const retentionDays = await getRetentionDays('ping_retention_days', 30);
   try {
-    const result = db.prepare(`
-            DELETE FROM pings 
-            WHERE created_at < datetime('now', '-' || ? || ' days')
-        `).run(retentionDays);
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - retentionDays);
 
-    if (result.changes > 0) {
-      console.log(`🧹 Cleanup: Deleted ${result.changes} pings older than ${retentionDays} days`);
+    const result = await db.ping.deleteMany({
+      where: {
+        created_at: { lt: dateLimit }
+      }
+    });
+
+    if (result.count > 0) {
+      console.log(`🧹 Cleanup: Deleted ${result.count} pings older than ${retentionDays} days`);
     }
-    return result.changes;
+    return result.count;
   } catch (error) {
     console.error('Ping cleanup error:', error);
     return 0;
@@ -34,18 +40,22 @@ function cleanupPings() {
 }
 
 // Cleanup old service incidents
-function cleanupIncidents() {
-  const retentionDays = getRetentionDays('incident_retention_days', 90);
+async function cleanupIncidents() {
+  const retentionDays = await getRetentionDays('incident_retention_days', 90);
   try {
-    const result = db.prepare(`
-            DELETE FROM service_incidents 
-            WHERE created_at < datetime('now', '-' || ? || ' days')
-        `).run(retentionDays);
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - retentionDays);
 
-    if (result.changes > 0) {
-      console.log(`🧹 Cleanup: Deleted ${result.changes} incidents older than ${retentionDays} days`);
+    const result = await db.serviceIncident.deleteMany({
+      where: {
+        created_at: { lt: dateLimit }
+      }
+    });
+
+    if (result.count > 0) {
+      console.log(`🧹 Cleanup: Deleted ${result.count} incidents older than ${retentionDays} days`);
     }
-    return result.changes;
+    return result.count;
   } catch (error) {
     console.error('Incident cleanup error:', error);
     return 0;
@@ -53,18 +63,22 @@ function cleanupIncidents() {
 }
 
 // Cleanup old alert history
-function cleanupAlerts() {
-  const retentionDays = getRetentionDays('alert_retention_days', 30);
+async function cleanupAlerts() {
+  const retentionDays = await getRetentionDays('alert_retention_days', 30);
   try {
-    const result = db.prepare(`
-            DELETE FROM alert_history 
-            WHERE created_at < datetime('now', '-' || ? || ' days')
-        `).run(retentionDays);
+    const dateLimit = new Date();
+    dateLimit.setDate(dateLimit.getDate() - retentionDays);
 
-    if (result.changes > 0) {
-      console.log(`🧹 Cleanup: Deleted ${result.changes} alerts older than ${retentionDays} days`);
+    const result = await db.alertHistory.deleteMany({
+      where: {
+        created_at: { lt: dateLimit }
+      }
+    });
+
+    if (result.count > 0) {
+      console.log(`🧹 Cleanup: Deleted ${result.count} alerts older than ${retentionDays} days`);
     }
-    return result.changes;
+    return result.count;
   } catch (error) {
     console.error('Alert cleanup error:', error);
     return 0;
@@ -72,11 +86,11 @@ function cleanupAlerts() {
 }
 
 // Run all cleanup jobs
-export function runCleanupJobs() {
+export async function runCleanupJobs() {
   console.log('🔄 Running data cleanup jobs...');
-  const pingsDeleted = cleanupPings();
-  const incidentsDeleted = cleanupIncidents();
-  const alertsDeleted = cleanupAlerts();
+  const pingsDeleted = await cleanupPings();
+  const incidentsDeleted = await cleanupIncidents();
+  const alertsDeleted = await cleanupAlerts();
 
   const total = pingsDeleted + incidentsDeleted + alertsDeleted;
   if (total > 0) {

@@ -59,10 +59,32 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      - name: Extract Release Notes
+        id: extract_release_notes
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          # Clean version string (remove v if present in comparison but keep consistent)
+          # Actually my CHANGELOG uses [1.2.3] format (no v). The tag is v1.2.3.
+          NORMALIZED_VERSION=${VERSION#v}
+          
+          echo "Extracting notes for version $NORMALIZED_VERSION"
+          
+          # Extract content between the version header and the next header
+          # Matches "## [1.2.3]" until next "## ["
+          awk "/^## \[${NORMALIZED_VERSION}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md > RELEASE_NOTES.md
+          
+          # If empty (fallback), usage default logic
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "No note found in CHANGELOG.md for $NORMALIZED_VERSION"
+            echo "See CHANGELOG.md for details." > RELEASE_NOTES.md
+          fi
+          
+          cat RELEASE_NOTES.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
           files: |
             docker-compose.yml
             DEPLOYMENT.md

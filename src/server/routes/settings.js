@@ -4,9 +4,9 @@ import { db } from '../db.js';
 const router = express.Router();
 
 // Get all settings
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
     try {
-        const settings = db.prepare('SELECT * FROM settings').all();
+        const settings = await db.setting.findMany();
         const settingsObj = {};
 
         settings.forEach(s => {
@@ -26,19 +26,25 @@ router.get('/', (req, res) => {
 });
 
 // Update settings
-router.put('/', (req, res) => {
+router.put('/', async (req, res) => {
     try {
         const updates = req.body;
 
-        const updateStmt = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+        // Transaction for bulk upsert
+        await db.$transaction(async (tx) => {
+            for (const [key, value] of Object.entries(updates)) {
+                // Skip updating smtp_pass if it's the masked value
+                if (key === 'smtp_pass' && value === '********') {
+                    continue;
+                }
 
-        for (const [key, value] of Object.entries(updates)) {
-            // Skip updating smtp_pass if it's the masked value
-            if (key === 'smtp_pass' && value === '********') {
-                continue;
+                await tx.setting.upsert({
+                    where: { key },
+                    update: { value: String(value) },
+                    create: { key, value: String(value) }
+                });
             }
-            updateStmt.run(key, value);
-        }
+        });
 
         res.json({ message: 'Settings updated successfully' });
     } catch (error) {
@@ -48,12 +54,14 @@ router.put('/', (req, res) => {
 });
 
 // Get public settings (for status page)
-router.get('/public', (req, res) => {
+router.get('/public', async (req, res) => {
     try {
         const publicKeys = ['page_title', 'refresh_interval'];
-        const settings = db.prepare(`
-      SELECT * FROM settings WHERE key IN (${publicKeys.map(() => '?').join(',')})
-    `).all(...publicKeys);
+        const settings = await db.setting.findMany({
+            where: {
+                key: { in: publicKeys }
+            }
+        });
 
         const settingsObj = {};
         settings.forEach(s => {

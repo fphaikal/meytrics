@@ -1,10 +1,7 @@
 import express from 'express';
-import { db } from '../db.js';
 import {
   getAllStatusPages,
   getStatusPageById,
-  getStatusPageBySlug,
-  getDefaultStatusPage,
   createStatusPage,
   updateStatusPage,
   deleteStatusPage,
@@ -14,13 +11,22 @@ import {
   removeServiceFromStatusPage,
   updateStatusPageServices
 } from '../services/statusPageService.js';
+import {
+  getSectionsWithServices,
+  createSection,
+  updateSection,
+  deleteSection,
+  updateSectionOrder,
+  assignServiceToSection
+} from '../services/statusPageSectionsService.js';
+import { db } from '../db.js';
 
 const router = express.Router();
 
 // Get all status pages (admin)
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const pages = getAllStatusPages();
+    const pages = await getAllStatusPages();
     res.json(pages.map(p => ({
       ...p,
       is_default: !!p.is_default,
@@ -33,10 +39,10 @@ router.get('/', (req, res) => {
 });
 
 // Get status page by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const page = getStatusPageById(parseInt(id));
+    const page = await getStatusPageById(parseInt(id));
 
     if (!page) {
       return res.status(404).json({ error: 'Status page not found' });
@@ -54,7 +60,7 @@ router.get('/:id', (req, res) => {
 });
 
 // Create status page
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { slug, name } = req.body;
 
@@ -67,14 +73,15 @@ router.post('/', (req, res) => {
       return res.status(400).json({ error: 'Slug must contain only lowercase letters, numbers, and hyphens' });
     }
 
-    const page = createStatusPage(req.body);
+    const page = await createStatusPage(req.body);
     res.status(201).json({
       ...page,
       is_default: !!page.is_default,
       is_public: !!page.is_public
     });
   } catch (error) {
-    if (error.message?.includes('UNIQUE constraint failed')) {
+    // Prisma unique constraint error code P2002
+    if (error.code === 'P2002') {
       return res.status(409).json({ error: 'A status page with this slug already exists' });
     }
     console.error('Error creating status page:', error);
@@ -83,10 +90,10 @@ router.post('/', (req, res) => {
 });
 
 // Update status page
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const page = updateStatusPage(parseInt(id), req.body);
+    const page = await updateStatusPage(parseInt(id), req.body);
 
     if (!page) {
       return res.status(404).json({ error: 'Status page not found' });
@@ -98,7 +105,7 @@ router.put('/:id', (req, res) => {
       is_public: !!page.is_public
     });
   } catch (error) {
-    if (error.message?.includes('UNIQUE constraint failed')) {
+    if (error.code === 'P2002') {
       return res.status(409).json({ error: 'A status page with this slug already exists' });
     }
     console.error('Error updating status page:', error);
@@ -107,10 +114,10 @@ router.put('/:id', (req, res) => {
 });
 
 // Delete status page
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    deleteStatusPage(parseInt(id));
+    await deleteStatusPage(parseInt(id));
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting status page:', error);
@@ -119,10 +126,10 @@ router.delete('/:id', (req, res) => {
 });
 
 // Get services for a status page
-router.get('/:id/services', (req, res) => {
+router.get('/:id/services', async (req, res) => {
   try {
     const { id } = req.params;
-    const services = getServicesForStatusPage(parseInt(id));
+    const services = await getServicesForStatusPage(parseInt(id));
     res.json(services);
   } catch (error) {
     console.error('Error fetching services:', error);
@@ -131,10 +138,10 @@ router.get('/:id/services', (req, res) => {
 });
 
 // Get service IDs for a status page
-router.get('/:id/service-ids', (req, res) => {
+router.get('/:id/service-ids', async (req, res) => {
   try {
     const { id } = req.params;
-    const serviceIds = getServiceIdsForStatusPage(parseInt(id));
+    const serviceIds = await getServiceIdsForStatusPage(parseInt(id));
     res.json(serviceIds);
   } catch (error) {
     console.error('Error fetching service IDs:', error);
@@ -143,7 +150,7 @@ router.get('/:id/service-ids', (req, res) => {
 });
 
 // Update services for a status page (bulk update)
-router.put('/:id/services', (req, res) => {
+router.put('/:id/services', async (req, res) => {
   try {
     const { id } = req.params;
     const { service_ids } = req.body;
@@ -152,7 +159,7 @@ router.put('/:id/services', (req, res) => {
       return res.status(400).json({ error: 'service_ids must be an array' });
     }
 
-    const result = updateStatusPageServices(parseInt(id), service_ids);
+    const result = await updateStatusPageServices(parseInt(id), service_ids);
     res.json({ success: true, service_ids: result });
   } catch (error) {
     console.error('Error updating services:', error);
@@ -161,10 +168,10 @@ router.put('/:id/services', (req, res) => {
 });
 
 // Assign service to status page
-router.post('/:id/services/:serviceId', (req, res) => {
+router.post('/:id/services/:serviceId', async (req, res) => {
   try {
     const { id, serviceId } = req.params;
-    assignServiceToStatusPage(parseInt(serviceId), parseInt(id));
+    await assignServiceToStatusPage(parseInt(serviceId), parseInt(id));
     res.json({ success: true });
   } catch (error) {
     console.error('Error assigning service:', error);
@@ -173,10 +180,10 @@ router.post('/:id/services/:serviceId', (req, res) => {
 });
 
 // Remove service from status page
-router.delete('/:id/services/:serviceId', (req, res) => {
+router.delete('/:id/services/:serviceId', async (req, res) => {
   try {
     const { id, serviceId } = req.params;
-    removeServiceFromStatusPage(parseInt(serviceId), parseInt(id));
+    await removeServiceFromStatusPage(parseInt(serviceId), parseInt(id));
     res.json({ success: true });
   } catch (error) {
     console.error('Error removing service:', error);
@@ -185,39 +192,26 @@ router.delete('/:id/services/:serviceId', (req, res) => {
 });
 
 // ==================== SECTIONS ROUTES ====================
-import {
-  getSections,
-  getSectionById,
-  createSection,
-  updateSection,
-  deleteSection,
-  updateSectionOrder,
-  assignServiceToSection,
-  getSectionsWithServices
-} from '../services/statusPageSectionsService.js';
 
 // Get all sections for a status page (with services)
-router.get('/:id/sections', (req, res) => {
+router.get('/:id/sections', async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(`Getting sections for status page ${id}`);
-    const sections = getSectionsWithServices(parseInt(id));
-    console.log(`Found ${sections.length} sections`);
+    const sections = await getSectionsWithServices(parseInt(id));
     res.json(sections);
   } catch (error) {
     console.error('Error fetching sections:', error.message);
-    console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Failed to fetch sections', details: error.message });
   }
 });
 
 // Create a new section
-router.post('/:id/sections', (req, res) => {
+router.post('/:id/sections', async (req, res) => {
   try {
     const { id } = req.params;
     const { name, display_order } = req.body;
 
-    const section = createSection(parseInt(id), name || '', display_order || 0);
+    const section = await createSection(parseInt(id), name || '', display_order || 0);
     res.status(201).json(section);
   } catch (error) {
     console.error('Error creating section:', error);
@@ -226,10 +220,10 @@ router.post('/:id/sections', (req, res) => {
 });
 
 // Update section
-router.put('/:id/sections/:sectionId', (req, res) => {
+router.put('/:id/sections/:sectionId', async (req, res) => {
   try {
     const { sectionId } = req.params;
-    const section = updateSection(parseInt(sectionId), req.body);
+    const section = await updateSection(parseInt(sectionId), req.body);
 
     if (!section) {
       return res.status(404).json({ error: 'Section not found' });
@@ -243,10 +237,10 @@ router.put('/:id/sections/:sectionId', (req, res) => {
 });
 
 // Delete section
-router.delete('/:id/sections/:sectionId', (req, res) => {
+router.delete('/:id/sections/:sectionId', async (req, res) => {
   try {
     const { sectionId } = req.params;
-    deleteSection(parseInt(sectionId));
+    await deleteSection(parseInt(sectionId));
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting section:', error);
@@ -255,16 +249,16 @@ router.delete('/:id/sections/:sectionId', (req, res) => {
 });
 
 // Update section order (bulk)
-router.put('/:id/sections/order', (req, res) => {
+router.put('/:id/sections/order', async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params; // statusPageId not strictly needed if we just update by IDs, but good for auth/checks
     const { section_ids } = req.body;
 
     if (!Array.isArray(section_ids)) {
       return res.status(400).json({ error: 'section_ids must be an array' });
     }
 
-    updateSectionOrder(parseInt(id), section_ids);
+    await updateSectionOrder(parseInt(id), section_ids);
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating section order:', error);
@@ -273,12 +267,12 @@ router.put('/:id/sections/order', (req, res) => {
 });
 
 // Assign service to section
-router.put('/:id/services/:serviceId/section', (req, res) => {
+router.put('/:id/services/:serviceId/section', async (req, res) => {
   try {
     const { id, serviceId } = req.params;
     const { section_id, display_options } = req.body;
 
-    assignServiceToSection(parseInt(id), parseInt(serviceId), section_id, display_options);
+    await assignServiceToSection(parseInt(id), parseInt(serviceId), section_id, display_options);
     res.json({ success: true });
   } catch (error) {
     console.error('Error assigning service to section:', error);
@@ -287,13 +281,25 @@ router.put('/:id/services/:serviceId/section', (req, res) => {
 });
 
 // Update service sort order within a section
-router.put('/:id/services/:serviceId/order', (req, res) => {
+router.put('/:id/services/:serviceId/order', async (req, res) => {
   try {
     const { id, serviceId } = req.params;
     const { sort_order } = req.body;
 
-    db.prepare('UPDATE status_page_services SET sort_order = ? WHERE status_page_id = ? AND service_id = ?')
-      .run(sort_order, parseInt(id), parseInt(serviceId));
+    // Use db directly for this small query or add service method
+    // StatusPageService model (junction)
+    // composite key
+
+    await db.statusPageService.updateMany({
+      where: {
+        status_page_id: parseInt(id),
+        service_id: parseInt(serviceId)
+      },
+      data: {
+        sort_order: sort_order
+      }
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating service order:', error);
@@ -302,4 +308,3 @@ router.put('/:id/services/:serviceId/order', (req, res) => {
 });
 
 export default router;
-

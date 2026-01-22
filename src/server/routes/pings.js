@@ -3,11 +3,8 @@ import { db } from '../db.js';
 
 const router = express.Router();
 
-// Helper to format date for SQLite (YYYY-MM-DD HH:MM:SS)
-const formatDateForDb = (date) => date.toISOString().replace('T', ' ').substring(0, 19);
-
 // Get pings for a service (with pagination and date range)
-router.get('/:serviceId', (req, res) => {
+router.get('/:serviceId', async (req, res) => {
     try {
         const { serviceId } = req.params;
         const { days = 30, limit = 5000 } = req.query;
@@ -15,12 +12,14 @@ router.get('/:serviceId', (req, res) => {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - parseInt(days));
 
-        const pings = db.prepare(`
-      SELECT * FROM pings 
-      WHERE service_id = ? AND created_at >= ?
-      ORDER BY created_at DESC
-      LIMIT ?
-    `).all(serviceId, formatDateForDb(startDate), parseInt(limit));
+        const pings = await db.ping.findMany({
+            where: {
+                service_id: parseInt(serviceId),
+                created_at: { gte: startDate }
+            },
+            orderBy: { created_at: 'desc' },
+            take: parseInt(limit)
+        });
 
         res.json(pings);
     } catch (error) {
@@ -29,72 +28,76 @@ router.get('/:serviceId', (req, res) => {
     }
 });
 
-// Get aggregated pings for response time chart (optimized for large time ranges)
-router.get('/:serviceId/aggregated', (req, res) => {
+// Get aggregated pings for response time chart (Optimized w/ Raw SQL)
+router.get('/:serviceId/aggregated', async (req, res) => {
     try {
         const { serviceId } = req.params;
         const { hours, days } = req.query;
+        const id = parseInt(serviceId);
 
-        // Determine time range and aggregation interval
         let startDate = new Date();
-        let groupBy;
+        let groupByFormat;
 
         if (hours) {
             const hoursInt = parseInt(hours);
             startDate.setHours(startDate.getHours() - hoursInt);
-
+            // Group by hour: 'YYYY-MM-DD HH:00:00'
+            // SQLite strftime('%Y-%m-%d %H:00:00', created_at)
+            groupByFormat = '%Y-%m-%d %H:00:00';
             if (hoursInt <= 1) {
-                // Last hour: no aggregation, return raw data
-                const pings = db.prepare(`
-                    SELECT * FROM pings 
-                    WHERE service_id = ? AND created_at >= ? AND status = 'up' AND response_time IS NOT NULL
-                    ORDER BY created_at ASC
-                `).all(serviceId, formatDateForDb(startDate));
-                return res.json(pings);
-            } else if (hoursInt <= 24) {
-                // Last 24h: aggregate per hour (24 data points)
-                groupBy = "strftime('%Y-%m-%d %H:00:00', created_at)";
+                // If checking last 1 hour, maybe raw is better or minute grouping
+                groupByFormat = '%Y-%m-%d %H:%M:00';
             }
         } else if (days) {
             const daysInt = parseInt(days);
             startDate.setDate(startDate.getDate() - daysInt);
-
-            if (daysInt <= 7) {
-                // Last 7 days: aggregate per hour (168 data points)
-                groupBy = "strftime('%Y-%m-%d %H:00:00', created_at)";
-            } else {
-                // Last 30+ days: aggregate per 4 hours (180 data points)
-                groupBy = "strftime('%Y-%m-%d', created_at) || ' ' || printf('%02d', (cast(strftime('%H', created_at) as integer) / 4) * 4) || ':00:00'";
-            }
+            // Group by hour
+            groupByFormat = '%Y-%m-%d %H:00:00';
         } else {
-            // Default: last 24 hours, aggregate per hour
             startDate.setHours(startDate.getHours() - 24);
-            groupBy = "strftime('%Y-%m-%d %H:00:00', created_at)";
+            groupByFormat = '%Y-%m-%d %H:00:00';
         }
 
-        const aggregatedPings = db.prepare(`
-            SELECT 
-                ${groupBy} as created_at,
-                AVG(response_time) as response_time,
-                MIN(response_time) as min_response_time,
-                MAX(response_time) as max_response_time,
-                'up' as status,
-                COUNT(*) as ping_count
-            FROM pings 
-            WHERE service_id = ? AND created_at >= ? AND status = 'up' AND response_time IS NOT NULL
-            GROUP BY ${groupBy}
-            ORDER BY created_at ASC
-        `).all(serviceId, formatDateForDb(startDate));
+        // Convert JS Date to ISO string for SQLite
+        const isoStart = startDate.toISOString();
 
-        res.json(aggregatedPings);
+        // Use Prisma Raw Query for SQLite Aggregation
+        // Note: SQLite dates are stored as strings usually in Prisma default
+        const result = await db.$queryRaw`
+            SELECT 
+                strftime(${groupByFormat}, created_at) as time_bucket,
+                AVG(response_time) as avg_resp,
+                MIN(response_time) as min_resp,
+                MAX(response_time) as max_resp,
+                COUNT(*) as count
+            FROM pings 
+            WHERE service_id = ${id} 
+              AND created_at >= ${isoStart}
+              AND status = 'up'
+              AND response_time IS NOT NULL
+            GROUP BY time_bucket
+            ORDER BY time_bucket ASC
+        `;
+
+        // Format for frontend
+        const formatted = result.map(r => ({
+            created_at: r.time_bucket, // already formatted string
+            response_time: r.avg_resp,
+            min_response_time: r.min_resp,
+            max_response_time: r.max_resp,
+            status: 'up',
+            ping_count: Number(r.count) // BigInt support
+        }));
+
+        res.json(formatted);
     } catch (error) {
         console.error('Get aggregated pings error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// Get ping statistics summary (min, max, avg, uptime) for a specific time range
-router.get('/:serviceId/summary', (req, res) => {
+// Get ping statistics summary
+router.get('/:serviceId/summary', async (req, res) => {
     try {
         const { serviceId } = req.params;
         const { hours, days } = req.query;
@@ -108,31 +111,43 @@ router.get('/:serviceId/summary', (req, res) => {
             startDate.setHours(startDate.getHours() - 24);
         }
 
-        const stats = db.prepare(`
-            SELECT 
-                ROUND(AVG(response_time)) as avg,
-                MIN(response_time) as min,
-                MAX(response_time) as max,
-                COUNT(*) as total,
-                SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count
-            FROM pings 
-            WHERE service_id = ? AND created_at >= ? AND response_time IS NOT NULL
-        `).get(serviceId, formatDateForDb(startDate));
+        const id = parseInt(serviceId);
 
-        // Get total count including down (which might have null response_time) for uptime
-        const uptimeStats = db.prepare(`
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count
-            FROM pings 
-            WHERE service_id = ? AND created_at >= ?
-        `).get(serviceId, formatDateForDb(startDate));
+        const aggregations = await db.ping.aggregate({
+            _avg: { response_time: true },
+            _min: { response_time: true },
+            _max: { response_time: true },
+            _count: { _all: true },
+            where: {
+                service_id: id,
+                created_at: { gte: startDate },
+                response_time: { not: null }
+            }
+        });
+
+        // Calculate uptime
+        // We can't do conditional count in one query easily with standard aggregate
+        // So fetch counts separately
+        const totalPings = await db.ping.count({
+            where: {
+                service_id: id,
+                created_at: { gte: startDate }
+            }
+        });
+
+        const upPings = await db.ping.count({
+            where: {
+                service_id: id,
+                created_at: { gte: startDate },
+                status: 'up'
+            }
+        });
 
         const response = {
-            avg: stats.avg || 0,
-            min: stats.min || 0,
-            max: stats.max || 0,
-            uptime: uptimeStats.total > 0 ? ((uptimeStats.up_count / uptimeStats.total) * 100).toFixed(3) : 0
+            avg: Math.round(aggregations._avg.response_time || 0),
+            min: aggregations._min.response_time || 0,
+            max: aggregations._max.response_time || 0,
+            uptime: totalPings > 0 ? ((upPings / totalPings) * 100).toFixed(3) : 0
         };
 
         res.json(response);
@@ -142,60 +157,74 @@ router.get('/:serviceId/summary', (req, res) => {
     }
 });
 
-// Get daily aggregated uptime data for service (for uptime bars)
-router.get('/:serviceId/daily', (req, res) => {
+// Get daily aggregated uptime data
+router.get('/:serviceId/daily', async (req, res) => {
     try {
         const { serviceId } = req.params;
         const { days = 90 } = req.query;
+        const id = parseInt(serviceId);
 
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - parseInt(days));
 
-        // Get service interval to calculate downtime
-        const service = db.prepare('SELECT interval FROM services WHERE id = ?').get(serviceId);
-        const checkIntervalMinutes = service ? Math.ceil(service.interval / 60) : 5; // Default 5 min
+        const service = await db.service.findUnique({ where: { id } });
+        const checkIntervalMinutes = service ? Math.ceil(service.interval / 60) : 5;
 
-        // Get daily aggregated data
-        const dailyData = db.prepare(`
-      SELECT 
-        date(created_at) as date,
-        COUNT(*) as total_checks,
-        SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count,
-        SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as down_count,
-        AVG(response_time) as avg_response_time
-      FROM pings 
-      WHERE service_id = ? AND created_at >= ?
-      GROUP BY date(created_at)
-      ORDER BY date ASC
-    `).all(serviceId, startDate.toISOString());
+        // Fetch all pings for the period (optimized select)
+        const pings = await db.ping.findMany({
+            where: {
+                service_id: id,
+                created_at: { gte: startDate }
+            },
+            select: {
+                created_at: true,
+                status: true,
+                response_time: true
+            }
+        });
 
-        // Fill in missing days with null data
+        // Group by day in JS
+        const dailyMap = new Map();
+
+        pings.forEach(p => {
+            const dateStr = new Date(p.created_at).toISOString().split('T')[0];
+            if (!dailyMap.has(dateStr)) {
+                dailyMap.set(dateStr, { total: 0, up: 0, down: 0, sumTime: 0, countTime: 0 });
+            }
+            const d = dailyMap.get(dateStr);
+            d.total++;
+            if (p.status === 'up') {
+                d.up++;
+                if (p.response_time !== null) {
+                    d.sumTime += p.response_time;
+                    d.countTime++;
+                }
+            } else if (p.status === 'down') {
+                d.down++;
+            }
+        });
+
+        // Fill date range
         const result = [];
         const endDate = new Date();
         const currentDate = new Date(startDate);
 
         while (currentDate <= endDate) {
             const dateStr = currentDate.toISOString().split('T')[0];
-            const dayData = dailyData.find(d => d.date === dateStr);
+            const data = dailyMap.get(dateStr);
 
-            if (dayData) {
-                // Calculate downtime in minutes
-                const downtimeMinutes = dayData.down_count * checkIntervalMinutes;
-
-                // Determine status: down if all checks failed, partial if some failed, up if all passed
+            if (data) {
+                const downtimeMinutes = data.down * checkIntervalMinutes;
                 let status = 'up';
-                if (dayData.down_count > 0 && dayData.up_count === 0) {
-                    status = 'down';
-                } else if (dayData.down_count > 0) {
-                    status = 'partial';
-                }
+                if (data.down > 0 && data.up === 0) status = 'down';
+                else if (data.down > 0) status = 'partial';
 
                 result.push({
                     date: dateStr,
-                    status: status,
-                    uptime_percent: ((dayData.up_count / dayData.total_checks) * 100).toFixed(2),
-                    total_checks: dayData.total_checks,
-                    avg_response_time: Math.round(dayData.avg_response_time || 0),
+                    status,
+                    uptime_percent: ((data.up / data.total) * 100).toFixed(2),
+                    total_checks: data.total,
+                    avg_response_time: data.countTime > 0 ? Math.round(data.sumTime / data.countTime) : 0,
                     downtime_minutes: downtimeMinutes
                 });
             } else {
@@ -208,7 +237,6 @@ router.get('/:serviceId/daily', (req, res) => {
                     downtime_minutes: 0
                 });
             }
-
             currentDate.setDate(currentDate.getDate() + 1);
         }
 
@@ -220,24 +248,43 @@ router.get('/:serviceId/daily', (req, res) => {
 });
 
 // Get overall stats
-router.get('/stats/overview', (req, res) => {
+router.get('/stats/overview', async (req, res) => {
     try {
         const { hours = 24 } = req.query;
         const startDate = new Date();
         startDate.setHours(startDate.getHours() - parseInt(hours));
 
-        const stats = db.prepare(`
-      SELECT 
-        COUNT(DISTINCT service_id) as services_checked,
-        COUNT(*) as total_checks,
-        SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count,
-        SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as down_count,
-        AVG(response_time) as avg_response_time
-      FROM pings 
-      WHERE created_at >= ?
-    `).get(startDate.toISOString());
+        const totalChecks = await db.ping.count({
+            where: { created_at: { gte: startDate } }
+        });
 
-        res.json(stats);
+        const upChecks = await db.ping.count({
+            where: { created_at: { gte: startDate }, status: 'up' }
+        });
+
+        const downChecks = await db.ping.count({
+            where: { created_at: { gte: startDate }, status: 'down' }
+        });
+
+        const avgAgg = await db.ping.aggregate({
+            _avg: { response_time: true },
+            where: { created_at: { gte: startDate }, response_time: { not: null } }
+        });
+
+        // Services checked count (distinct service_id)
+        // Prisma distinct count support varies, can use groupBy to count
+        const distinctServices = await db.ping.groupBy({
+            by: ['service_id'],
+            where: { created_at: { gte: startDate } }
+        });
+
+        res.json({
+            services_checked: distinctServices.length,
+            total_checks: totalChecks,
+            up_count: upChecks,
+            down_count: downChecks,
+            avg_response_time: avgAgg._avg.response_time || 0
+        });
     } catch (error) {
         console.error('Get stats error:', error);
         res.status(500).json({ error: 'Internal server error' });

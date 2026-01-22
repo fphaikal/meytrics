@@ -1,8 +1,8 @@
 import nodemailer from 'nodemailer';
 import { db } from '../db.js';
 
-function getSettings() {
-  const settings = db.prepare('SELECT * FROM settings').all();
+async function getSettings() {
+  const settings = await db.setting.findMany();
   const settingsObj = {};
   settings.forEach(s => {
     settingsObj[s.key] = s.value;
@@ -10,27 +10,29 @@ function getSettings() {
   return settingsObj;
 }
 
-function createTransporter() {
-  const settings = getSettings();
+async function createTransporter(settings) {
+  // settings passed or fetch? 
+  // Optimization: pass settings if already fetched.
+  const config = settings || await getSettings();
 
-  if (!settings.smtp_host || !settings.smtp_user || !settings.smtp_pass) {
+  if (!config.smtp_host || !config.smtp_user || !config.smtp_pass) {
     return null;
   }
 
   return nodemailer.createTransport({
-    host: settings.smtp_host,
-    port: parseInt(settings.smtp_port) || 587,
-    secure: parseInt(settings.smtp_port) === 465,
+    host: config.smtp_host,
+    port: parseInt(config.smtp_port) || 587,
+    secure: parseInt(config.smtp_port) === 465,
     auth: {
-      user: settings.smtp_user,
-      pass: settings.smtp_pass
+      user: config.smtp_user,
+      pass: config.smtp_pass
     }
   });
 }
 
 export async function sendDownAlert(service, error) {
-  const settings = getSettings();
-  const transporter = createTransporter();
+  const settings = await getSettings();
+  const transporter = await createTransporter(settings);
 
   if (!transporter || !settings.notification_emails) {
     console.log('⚠️ Email notification skipped (SMTP not configured)');
@@ -81,8 +83,8 @@ export async function sendDownAlert(service, error) {
 }
 
 export async function sendRecoveryAlert(service, responseTime) {
-  const settings = getSettings();
-  const transporter = createTransporter();
+  const settings = await getSettings();
+  const transporter = await createTransporter(settings);
 
   if (!transporter || !settings.notification_emails) {
     return;
@@ -132,13 +134,12 @@ export async function sendRecoveryAlert(service, responseTime) {
 }
 
 export async function sendTestEmail(email) {
-  const transporter = createTransporter();
+  const settings = await getSettings();
+  const transporter = await createTransporter(settings);
 
   if (!transporter) {
     throw new Error('SMTP not configured. Please configure SMTP settings first.');
   }
-
-  const settings = getSettings();
 
   await transporter.sendMail({
     from: settings.smtp_from_name ? `"${settings.smtp_from_name}" <${settings.smtp_from || settings.smtp_user}>` : (settings.smtp_from || settings.smtp_user),

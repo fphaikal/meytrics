@@ -5,9 +5,13 @@ WORKDIR /app
 
 # Copy package files
 COPY package.json bun.lock* ./
+COPY prisma ./prisma/
 
-# Install dependencies
+# Install dependencies (including devDeps for prisma CLI)
 RUN npm install --legacy-peer-deps
+
+# Generate Prisma Client
+RUN npx prisma generate
 
 # Copy source code
 COPY . .
@@ -24,12 +28,18 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev --legacy-peer-deps
 
+# Copy generated Prisma Client from builder
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
+
 # Copy built frontend
 COPY --from=builder /app/dist ./dist
 
 # Copy server files
 COPY server.js ./
 COPY src/server ./src/server
+# Copy prisma directory (useful for migrations if we add a migrate script later)
+COPY prisma ./prisma
 
 # Create data directory for SQLite
 RUN mkdir -p /data
@@ -38,6 +48,8 @@ RUN mkdir -p /data
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATA_DIR=/data
+# We do NOT set DATABASE_URL here effectively because we rely on db.js fallback or runtime injection
+# But db.js uses DATA_DIR to default to /data/monitor.db, which is what we want.
 
 # Expose port
 EXPOSE 3000

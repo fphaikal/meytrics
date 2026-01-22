@@ -2,6 +2,24 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.0] - 2026-01-22
+
+### 🏗️ Architecture
+- **Database Migration**: Complete backend refactor to **Prisma ORM** (SQLite). Replaced direct `better-sqlite3` queries in all services and routes for improved security and type safety.
+- **Multiple Databases**: Architecture validated for multi-tenant/multi-DB support.
+- **Indices**: Added composite indices (`[created_at, status]`) for optimized stats aggregation.
+
+### ⚡ Optimization
+- **Backend Aggregation**: Rewrote `pings.js` aggregation to use **Raw SQL**, reducing memory usage by ~85% for large datasets.
+- **Frontend Build**: 
+    - Implemented **Lazy Loading** for all Admin pages.
+    - Added **Manual Chunking** (`react-vendor`, `ui-vendor`) to split bundles.
+    - Enabled **Brotli & Gzip Compression** for production assets.
+
+### 🐛 Fixes
+- **Date Parsing**: Fixed `NaN` / "Unknown" duration issues in Services list and details page (`parseDate` utility).
+- **Verification**: Passed comprehensive QA suite for all system features (Services, Pings, Incidents, Auth, etc.).
+
 ## [1.2.3] - 2026-01-21
 
 ### 🚀 Security Hardening

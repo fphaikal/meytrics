@@ -1,122 +1,225 @@
 import { db } from '../db.js';
 
 // Get all sections for a status page
-export function getSections(statusPageId) {
-  return db.prepare(`
-    SELECT * FROM status_page_sections 
-    WHERE status_page_id = ? 
-    ORDER BY display_order ASC
-  `).all(statusPageId);
-}
-
-// Get a single section by ID
-export function getSectionById(id) {
-  return db.prepare('SELECT * FROM status_page_sections WHERE id = ?').get(id);
-}
-
-// Create a new section
-export function createSection(statusPageId, name, displayOrder = 0) {
-  const result = db.prepare(`
-    INSERT INTO status_page_sections (status_page_id, name, display_order)
-    VALUES (?, ?, ?)
-  `).run(statusPageId, name, displayOrder);
-
-  return { id: result.lastInsertRowid, status_page_id: statusPageId, name, display_order: displayOrder };
-}
-
-// Update a section
-export function updateSection(id, data) {
-  const { name, display_order } = data;
-  db.prepare(`
-    UPDATE status_page_sections 
-    SET name = COALESCE(?, name), 
-        display_order = COALESCE(?, display_order)
-    WHERE id = ?
-  `).run(name, display_order, id);
-
-  return getSectionById(id);
-}
-
-// Delete a section
-export function deleteSection(id) {
-  // First, unassign all services from this section
-  db.prepare('UPDATE status_page_services SET section_id = NULL WHERE section_id = ?').run(id);
-  // Then delete the section
-  return db.prepare('DELETE FROM status_page_sections WHERE id = ?').run(id);
-}
-
-// Update section order (bulk)
-export function updateSectionOrder(statusPageId, sectionIds) {
-  const updateStmt = db.prepare('UPDATE status_page_sections SET display_order = ? WHERE id = ? AND status_page_id = ?');
-
-  sectionIds.forEach((id, index) => {
-    updateStmt.run(index, id, statusPageId);
+export async function getSections(statusPageId) {
+  return db.statusPageSection.findMany({
+    where: { status_page_id: parseInt(statusPageId) },
+    orderBy: { display_order: 'asc' }
   });
 }
 
-// Assign service to a section
-export function assignServiceToSection(statusPageId, serviceId, sectionId, displayOptions = null) {
+export async function getSectionById(id) {
+  return db.statusPageSection.findUnique({
+    where: { id: parseInt(id) }
+  });
+}
+
+export async function createSection(statusPageId, name, displayOrder = 0) {
+  return db.statusPageSection.create({
+    data: {
+      status_page_id: parseInt(statusPageId),
+      name,
+      display_order: displayOrder
+    }
+  });
+}
+
+export async function updateSection(id, data) {
+  try {
+    return await db.statusPageSection.update({
+      where: { id: parseInt(id) },
+      data: {
+        name: data.name,
+        display_order: data.display_order
+      }
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function deleteSection(id) {
+  const sectionId = parseInt(id);
+  return db.$transaction(async (tx) => {
+    // Unassign services
+    // Assuming there is a relation or we update manually
+    // statusPageService model has `section_id`? 
+    // We need to update junction table `statusPageService` (status_page_services) where section_id = id
+    // Prisma schema: StatusPageService model likely has section_id
+    await tx.statusPageService.updateMany({
+      where: { section_id: sectionId },
+      data: { section_id: null }
+    });
+
+    return tx.statusPageSection.delete({
+      where: { id: sectionId }
+    });
+  });
+}
+
+export async function updateSectionOrder(statusPageId, sectionIds) {
+  return db.$transaction(async (tx) => {
+    for (let i = 0; i < sectionIds.length; i++) {
+      await tx.statusPageSection.update({
+        where: { id: parseInt(sectionIds[i]) },
+        data: { display_order: i }
+      });
+    }
+  });
+}
+
+export async function assignServiceToSection(statusPageId, serviceId, sectionId, displayOptions = null) {
   const optionsStr = displayOptions ? JSON.stringify(displayOptions) : '{"showHistory":true,"showChart":true}';
 
-  // First check if the service is already in the status page
-  const existing = db.prepare('SELECT * FROM status_page_services WHERE status_page_id = ? AND service_id = ?').get(statusPageId, serviceId);
+  // Check existing
+  const exists = await db.statusPageService.findUnique({
+    where: {
+      status_page_id_service_id: {
+        status_page_id: parseInt(statusPageId),
+        service_id: parseInt(serviceId)
+      }
+    }
+  });
 
-  if (existing) {
-    // Update existing
-    db.prepare(`
-      UPDATE status_page_services 
-      SET section_id = ?, display_options = ?
-      WHERE status_page_id = ? AND service_id = ?
-    `).run(sectionId, optionsStr, statusPageId, serviceId);
+  if (exists) {
+    await db.statusPageService.update({
+      where: {
+        status_page_id_service_id: {
+          status_page_id: parseInt(statusPageId),
+          service_id: parseInt(serviceId)
+        }
+      },
+      data: {
+        section_id: parseInt(sectionId),
+        display_options: optionsStr
+      }
+    });
   } else {
-    // Insert new (this shouldn't normally happen if service was added properly)
-    const maxOrder = db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 as next_order FROM status_page_services WHERE status_page_id = ?').get(statusPageId);
-    db.prepare(`
-      INSERT INTO status_page_services (status_page_id, service_id, section_id, display_options, sort_order) 
-      VALUES (?, ?, ?, ?, ?)
-    `).run(statusPageId, serviceId, sectionId, optionsStr, maxOrder.next_order);
+    // Find max order
+    const agg = await db.statusPageService.aggregate({
+      _max: { sort_order: true },
+      where: { status_page_id: parseInt(statusPageId) }
+    });
+    const nextOrder = (agg._max.sort_order || -1) + 1;
+
+    await db.statusPageService.create({
+      data: {
+        status_page_id: parseInt(statusPageId),
+        service_id: parseInt(serviceId),
+        section_id: parseInt(sectionId),
+        display_options: optionsStr,
+        sort_order: nextOrder
+      }
+    });
   }
 }
 
 // Get services for a section
-export function getServicesInSection(statusPageId, sectionId) {
-  return db.prepare(`
-    SELECT sps.*, s.name as service_name, s.url
-    FROM status_page_services sps
-    JOIN services s ON sps.service_id = s.id
-    WHERE sps.status_page_id = ? AND sps.section_id = ?
-    ORDER BY sps.sort_order ASC
-  `).all(statusPageId, sectionId);
+export async function getServicesInSection(statusPageId, sectionId) {
+  // Join with services
+  const entries = await db.statusPageService.findMany({
+    where: {
+      status_page_id: parseInt(statusPageId),
+      section_id: parseInt(sectionId)
+    },
+    include: { service: true },
+    orderBy: { sort_order: 'asc' }
+  });
+
+  return entries.map(e => ({
+    ...e,
+    // Flatten service details
+    service_name: e.service.name,
+    url: e.service.url,
+    // Include raw entry for metadata like display_options
+    ...e.service
+    // Careful with spread, we want sps fields + service fields.
+    // The original returned "sps.*, s.name.., s.url".
+  })).map(e => ({
+    // We'll mimic the structure roughly but clean it up
+    id: e.id, // junction id if any? schema usually composite. Or maybe `id` exists?
+    // Actually junction table usually doesn't have ID if composite PK.
+    // But original code: `SELECT sps.*`.
+    // If Prisma model has id, good. If composite PK, no single ID.
+    // Assuming we rely on service_id/status_page_id.
+    // Original frontend likely uses service_id.
+    status_page_id: e.status_page_id,
+    service_id: e.service_id,
+    section_id: e.section_id,
+    sort_order: e.sort_order,
+    display_options: e.display_options,
+    service_name: e.service.name,
+    url: e.service.url
+  }));
 }
 
-// Get services without a section (uncategorized)
-export function getServicesWithoutSection(statusPageId) {
-  return db.prepare(`
-    SELECT sps.*, s.name as service_name, s.url
-    FROM status_page_services sps
-    JOIN services s ON sps.service_id = s.id
-    WHERE sps.status_page_id = ? AND sps.section_id IS NULL
-    ORDER BY sps.sort_order ASC
-  `).all(statusPageId);
+export async function getServicesWithoutSection(statusPageId) {
+  const entries = await db.statusPageService.findMany({
+    where: {
+      status_page_id: parseInt(statusPageId),
+      section_id: null
+    },
+    include: { service: true },
+    orderBy: { sort_order: 'asc' }
+  });
+
+  return entries.map(e => ({
+    status_page_id: e.status_page_id,
+    service_id: e.service_id,
+    section_id: e.section_id,
+    sort_order: e.sort_order,
+    display_options: e.display_options,
+    service_name: e.service.name,
+    url: e.service.url
+  }));
 }
 
 // Get all sections with their services for a status page
-export function getSectionsWithServices(statusPageId) {
-  const sections = getSections(statusPageId);
-  const uncategorizedServices = getServicesWithoutSection(statusPageId);
+export async function getSectionsWithServices(statusPageId) {
+  const sections = await getSections(statusPageId);
+  // Loop valid because manageable number of sections
+  // Or fetch all services and map in memory
+
+  // Fetch all services for page
+  const allServices = await db.statusPageService.findMany({
+    where: { status_page_id: parseInt(statusPageId) },
+    include: { service: true },
+    orderBy: { sort_order: 'asc' }
+  });
+
+  const serviceMap = new Map(); // sectionId -> services[]
+  const uncategorized = [];
+
+  allServices.forEach(sps => {
+    const mapped = {
+      status_page_id: sps.status_page_id,
+      service_id: sps.service_id,
+      section_id: sps.section_id,
+      sort_order: sps.sort_order,
+      display_options: sps.display_options,
+      service_name: sps.service.name,
+      url: sps.service.url
+    };
+
+    if (sps.section_id) {
+      if (!serviceMap.has(sps.section_id)) serviceMap.set(sps.section_id, []);
+      serviceMap.get(sps.section_id).push(mapped);
+    } else {
+      uncategorized.push(mapped);
+    }
+  });
 
   const result = sections.map(section => ({
     ...section,
-    services: getServicesInSection(statusPageId, section.id)
+    services: serviceMap.get(section.id) || []
   }));
 
-  // Add uncategorized services as a virtual section
-  if (uncategorizedServices.length > 0) {
+  if (uncategorized.length > 0) {
     result.push({
       id: null,
       name: 'Uncategorized',
       display_order: 9999,
-      services: uncategorizedServices
+      services: uncategorized
     });
   }
 

@@ -1,6 +1,9 @@
 import { db } from '../db.js';
 import { sendDownAlert, sendRecoveryAlert } from '../services/emailService.js';
 import { triggerWebhooks } from '../services/webhookService.js';
+import { checkSSL } from '../utils/ssl.js';
+import { checkDomainExpiry } from '../utils/whois.js';
+import { checkServerLocation } from '../utils/geoip.js';
 
 // Store last status for each service to detect state changes
 const lastStatus = new Map();
@@ -19,7 +22,7 @@ async function checkService(service) {
   let status = 'up';
   let statusCode = null;
   let error = null;
-  let responseTime = null;
+  let responseTime = 0;
 
   try {
     if (service.type === 'http' || service.type === 'keyword') {
@@ -59,14 +62,36 @@ async function checkService(service) {
         error = `HTTP ${response.status} ${response.statusText}`;
       } else if (service.type === 'keyword' && service.keyword) {
         // Keyword monitoring check
-        const text = await response.text();
-        if (!text.includes(service.keyword)) {
-          status = 'down';
-          error = `Keyword "${service.keyword}" not found in response`;
+        let text = await response.text();
+        const expectedKeyword = service.keyword;
+        const condition = service.keyword_condition || 'exists';
+        const isCaseSensitive = !!service.keyword_case_sensitive;
+
+        let content = text;
+        let keyword = expectedKeyword;
+
+        if (!isCaseSensitive) {
+          content = content.toLowerCase();
+          keyword = keyword.toLowerCase();
+        }
+
+        const keywordFound = content.includes(keyword);
+
+        if (condition === 'exists') {
+          // Condition: Keyword MUST exist
+          if (!keywordFound) {
+            status = 'down';
+            error = `Keyword "${expectedKeyword}" not found in response`;
+          }
+        } else if (condition === 'not_exists') {
+          // Condition: Keyword MUST NOT exist
+          if (keywordFound) {
+            status = 'down';
+            error = `Keyword "${expectedKeyword}" found in response (expected absence)`;
+          }
         }
       }
     } else if (service.type === 'tcp') {
-      // For TCP, we just check if we can connect
       const url = new URL(service.url.startsWith('tcp://') ? service.url : `tcp://${service.url}`);
       const { createConnection } = await import('net');
       const tcpTimeout = (service.timeout || 30) * 1000;
@@ -92,10 +117,9 @@ async function checkService(service) {
       });
     } else if (service.type === 'dns') {
       const { resolve4, resolve6, resolveCname, resolveMx, resolveTxt, resolveNs } = await import('dns/promises');
-      const hostname = service.url.replace(/^https?:\/\//, '').replace(/\/$/, ''); // Remove protocol/path if user added it
+      const hostname = service.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
       const recordType = service.dns_record_type || 'A';
-
       let records;
       switch (recordType) {
         case 'A': records = await resolve4(hostname); break;
@@ -109,23 +133,16 @@ async function checkService(service) {
 
       responseTime = Date.now() - startTime;
 
-      // If records found, it's UP.
-      // If specific value expected, check it.
       if (service.dns_expected_value) {
         const expected = service.dns_expected_value;
         let found = false;
 
-        // Helper to check standard arrays (A, AAAA, CNAME, NS)
         if (Array.isArray(records)) {
-          // MX records are objects { exchange, priority }
-          // TXT records are arrays of arrays (chunks)
-
           if (recordType === 'MX') {
             found = records.some(r => r.exchange.includes(expected));
           } else if (recordType === 'TXT') {
             found = records.some(r => r.flat().join('').includes(expected));
           } else {
-            // Simple string arrays
             found = records.some(r => r.includes(expected));
           }
         }
@@ -135,6 +152,55 @@ async function checkService(service) {
           error = `DNS ${recordType} record does not match expected value: ${expected}`;
         }
       }
+    } else if (['postgres', 'mysql', 'mongodb', 'redis'].includes(service.type)) {
+      const connectionString = service.db_connection_string;
+      const query = service.db_query;
+
+      if (!connectionString) {
+        throw new Error('Connection string is required');
+      }
+
+      if (service.type === 'postgres') {
+        const { Client } = await import('pg');
+        const client = new Client({
+          connectionString,
+          connectionTimeoutMillis: (service.timeout || 10) * 1000,
+        });
+        await client.connect();
+        await client.query(query || 'SELECT 1');
+        responseTime = Date.now() - startTime;
+        await client.end();
+      } else if (service.type === 'mysql') {
+        const mysql = await import('mysql2/promise');
+        const connection = await mysql.createConnection({
+          uri: connectionString,
+          connectTimeout: (service.timeout || 10) * 1000
+        });
+        await connection.query(query || 'SELECT 1');
+        responseTime = Date.now() - startTime;
+        await connection.end();
+      } else if (service.type === 'mongodb') {
+        const { MongoClient } = await import('mongodb');
+        const client = new MongoClient(connectionString, {
+          serverSelectionTimeoutMS: (service.timeout || 10) * 1000
+        });
+        await client.connect();
+        await client.db().command({ ping: 1 });
+        responseTime = Date.now() - startTime;
+        await client.close();
+      } else if (service.type === 'redis') {
+        const { createClient } = await import('redis');
+        const client = createClient({
+          url: connectionString,
+          socket: {
+            connectTimeout: (service.timeout || 10) * 1000
+          }
+        });
+        await client.connect();
+        await client.ping();
+        responseTime = Date.now() - startTime;
+        await client.disconnect();
+      }
     }
   } catch (err) {
     status = 'down';
@@ -143,73 +209,75 @@ async function checkService(service) {
   }
 
   // Save ping result
-  db.prepare(`
-    INSERT INTO pings (service_id, status, response_time, status_code, error)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(service.id, status, responseTime, statusCode, error);
+  // Prisma async
+  await db.ping.create({
+    data: {
+      service_id: service.id,
+      status,
+      response_time: typeof responseTime === 'number' ? responseTime : 0,
+      status_code: statusCode,
+      error: error ? String(error) : null
+    }
+  });
 
   // Check for status change and send notifications
   const prevStatus = lastStatus.get(service.id);
-  const isFirstRun = prevStatus === undefined;
 
   // 1. Handle DOWN state
   if (status === 'down') {
-    // Check if we already have an open incident for this service
-    let openIncident = db.prepare(`
-      SELECT id, started_at FROM service_incidents 
-      WHERE service_id = ? AND status = 'down' AND ended_at IS NULL
-    `).get(service.id);
+    // Check open incident
+    let openIncident = await db.serviceIncident.findFirst({
+      where: {
+        service_id: service.id,
+        status: 'down',
+        ended_at: null
+      }
+    });
 
     // If no open incident, create one
     if (!openIncident) {
-      db.prepare(`
-        INSERT INTO service_incidents (service_id, status, started_at, error_message)
-        VALUES (?, 'down', datetime('now'), ?)
-      `).run(service.id, error);
-
-      // Fetch the newly created incident
-      openIncident = db.prepare(`
-        SELECT id, started_at FROM service_incidents 
-        WHERE service_id = ? AND status = 'down' AND ended_at IS NULL
-      `).get(service.id);
-
+      openIncident = await db.serviceIncident.create({
+        data: {
+          service_id: service.id,
+          status: 'down',
+          started_at: new Date(),
+          error_message: error
+        }
+      });
       console.log(`📝 Incident recorded for ${service.name}`);
     }
 
     // Handle Notifications
     if (service.notify_down) {
       // 1. Check Notification Delay
-      const startedAt = new Date(openIncident.started_at + (openIncident.started_at.endsWith('Z') ? '' : 'Z')).getTime();
+      const startedAt = new Date(openIncident.started_at).getTime();
       const now = Date.now();
       const delayMs = (service.notification_delay || 0) * 1000;
 
-      // If we are within the delay period, do NOT alert yet
       if (now - startedAt < delayMs) {
-        // console.log(`⏳ Delaying alert for ${service.name} (waiting ${service.notification_delay}s)`);
-        // Commented out to reduce noise
+        // Delaying
       } else {
         // 2. Check Last Alert for Repeat Logic
-        const lastAlert = db.prepare(`
-          SELECT created_at FROM alert_history 
-          WHERE service_id = ? AND type IN ('down', 'down-repeat') 
-          ORDER BY created_at DESC LIMIT 1
-        `).get(service.id);
+        const lastAlert = await db.alertHistory.findFirst({
+          where: {
+            service_id: service.id,
+            type: { in: ['down', 'down-repeat'] }
+          },
+          orderBy: { created_at: 'desc' }
+        });
 
         let shouldSendAlert = false;
         let alertType = 'down';
 
         if (!lastAlert) {
-          // Never alerted -> Send
           shouldSendAlert = true;
         } else {
-          const lastAlertTime = new Date(lastAlert.created_at + (lastAlert.created_at.endsWith('Z') ? '' : 'Z')).getTime();
-
-          // If last alert was BEFORE this incident started, it's a new incident -> Send
-          // (allowing 5s buffer for clock skew)
+          const lastAlertTime = new Date(lastAlert.created_at).getTime();
+          // If last alert was BEFORE this incident started, it's a new incident
           if (lastAlertTime < (startedAt - 5000)) {
             shouldSendAlert = true;
           }
-          // If alert is part of this incident, check repeat
+          // Repeat logic
           else if (service.notification_repeat > 0) {
             const repeatMs = service.notification_repeat * 1000;
             if (now - lastAlertTime >= repeatMs) {
@@ -224,11 +292,14 @@ async function checkService(service) {
           sendDownAlert(service, error);
           triggerWebhooks('down', service, error);
 
-          // Record alert to history
-          db.prepare(`
-             INSERT INTO alert_history (service_id, type, message)
-             VALUES (?, ?, ?)
-           `).run(service.id, alertType, `Service is down: ${error}`);
+          // Record alert
+          await db.alertHistory.create({
+            data: {
+              service_id: service.id,
+              type: alertType,
+              message: `Service is down: ${error}`
+            }
+          });
         }
       }
     }
@@ -236,29 +307,32 @@ async function checkService(service) {
 
   // 2. Handle UP state (Recovery)
   else if (status === 'up') {
-    // Check if we have an open incident to close
-    const openIncident = db.prepare(`
-      SELECT * FROM service_incidents 
-      WHERE service_id = ? AND status = 'down' AND ended_at IS NULL
-      ORDER BY started_at DESC LIMIT 1
-    `).get(service.id);
+    // Check active incident
+    const openIncident = await db.serviceIncident.findFirst({
+      where: {
+        service_id: service.id,
+        status: 'down',
+        ended_at: null
+      },
+      orderBy: { started_at: 'desc' }
+    });
 
     if (openIncident) {
-      const startTime = new Date(openIncident.started_at + 'Z').getTime();
+      const startTime = new Date(openIncident.started_at).getTime();
       const endTime = Date.now();
       const durationSeconds = Math.floor((endTime - startTime) / 1000);
 
-      db.prepare(`
-        UPDATE service_incidents 
-        SET ended_at = datetime('now'), 
-            duration_seconds = ?,
-            status = 'resolved'
-        WHERE id = ?
-      `).run(durationSeconds, openIncident.id);
+      await db.serviceIncident.update({
+        where: { id: openIncident.id },
+        data: {
+          ended_at: new Date(),
+          duration_seconds: durationSeconds,
+          status: 'resolved'
+        }
+      });
+
       console.log(`✅ Incident resolved for ${service.name} (duration: ${durationSeconds}s)`);
 
-      // Send recovery notification only if we are tracking state and it was previously down
-      // (Or just send it whenever we close an incident? Let's stick to state transition for alerts to be safe)
       if (service.notify_down || prevStatus === 'down') {
         console.log(`🟢 Service ${service.name} RECOVERED`);
         sendRecoveryAlert(service, responseTime);
@@ -269,7 +343,7 @@ async function checkService(service) {
 
   lastStatus.set(service.id, status);
 
-  // 3. Handle Slow Response (only if service is up)
+  // 3. Handle Slow Response
   if (status === 'up' && service.slow_threshold && responseTime > service.slow_threshold) {
     console.log(`⚠️ Service ${service.name} is SLOW (${responseTime}ms > ${service.slow_threshold}ms threshold)`);
     triggerWebhooks('slow', service, `Response time: ${responseTime}ms (threshold: ${service.slow_threshold}ms)`);
@@ -280,142 +354,137 @@ async function checkService(service) {
 }
 
 function scheduleService(service) {
-  // Clear existing interval if any
   if (activeIntervals.has(service.id)) {
     clearInterval(activeIntervals.get(service.id));
   }
-
-  // Schedule regular checks based on service interval
-  const intervalMs = service.interval * 1000;
+  const intervalMs = (service.interval || 60) * 1000;
   const intervalId = setInterval(() => checkService(service), intervalMs);
   activeIntervals.set(service.id, intervalId);
-
-  console.log(`📅 Scheduled ${service.name} every ${service.interval}s`);
+  console.log(`📅 Scheduled ${service.name} every ${intervalMs / 1000}s`);
 }
 
-export function startPingJobs() {
+export async function startPingJobs() {
   console.log('🚀 Starting ping jobs...');
 
-  // Get all active (non-paused) services
-  const services = db.prepare('SELECT * FROM services WHERE paused = 0').all();
+  // Get all active services
+  const services = await db.service.findMany({
+    where: { paused: 0 }
+  });
 
   if (services.length === 0) {
-    console.log('ℹ️ No services configured yet');
+    console.log('ℹ️ No active services configured yet');
   }
 
-  // Initial check for all services
   services.forEach(service => {
-    // Run initial check
     checkService(service);
-    // Schedule recurring checks
     scheduleService(service);
   });
 
-  // Watch for service changes every 30 seconds
-  setInterval(() => {
-    const currentServices = db.prepare('SELECT * FROM services').all();
+  // Watch for service changes every 30s
+  setInterval(async () => {
+    try {
+      const currentServices = await db.service.findMany(); // All services
 
-    // Find new or updated services
-    currentServices.forEach(service => {
-      const existingInterval = activeIntervals.get(service.id);
+      // Find new/updated
+      currentServices.forEach(service => {
+        const existingInterval = activeIntervals.get(service.id);
 
-      // Handle paused services - stop their intervals
-      if (service.paused && existingInterval) {
-        console.log(`⏸️ Service paused: ${service.name}`);
-        clearInterval(existingInterval);
-        activeIntervals.delete(service.id);
-        return;
+        // Paused
+        if (service.paused && existingInterval) {
+          console.log(`⏸️ Service paused: ${service.name}`);
+          clearInterval(existingInterval);
+          activeIntervals.delete(service.id);
+          return;
+        }
+
+        // New or Resumed
+        if (!service.paused && !existingInterval) {
+          console.log(`➕ New/resumed service detected: ${service.name}`);
+          checkService(service);
+          scheduleService(service);
+        }
+      });
+
+      // Removed
+      const currentIds = new Set(currentServices.map(s => s.id));
+      for (const [serviceId, intervalId] of activeIntervals) {
+        if (!currentIds.has(serviceId)) {
+          console.log(`➖ Service removed: ${serviceId}`);
+          clearInterval(intervalId);
+          activeIntervals.delete(serviceId);
+          lastStatus.delete(serviceId);
+        }
       }
-
-      // Handle unpaused/new services
-      if (!service.paused && !existingInterval) {
-        console.log(`➕ New/resumed service detected: ${service.name}`);
-        checkService(service);
-        scheduleService(service);
-      }
-    });
-
-    // Find removed services
-    const currentIds = new Set(currentServices.map(s => s.id));
-    for (const [serviceId, intervalId] of activeIntervals) {
-      if (!currentIds.has(serviceId)) {
-        console.log(`➖ Service removed: ${serviceId}`);
-        clearInterval(intervalId);
-        activeIntervals.delete(serviceId);
-        lastStatus.delete(serviceId);
-      }
+    } catch (err) {
+      console.error('Error refreshing services:', err);
     }
   }, 30000);
 
   console.log(`✅ Ping jobs started for ${services.length} services`);
 }
 
-
-
-
-import { checkSSL } from '../utils/ssl.js';
-import { checkDomainExpiry } from '../utils/whois.js';
-import { checkServerLocation } from '../utils/geoip.js';
-
 async function runSslChecks() {
   console.log('🔒 Starting SSL/Domain/GeoIP checks...');
-  const services = db.prepare('SELECT * FROM services WHERE paused = 0 AND (type = \'http\' OR type = \'https\')').all();
+  const services = await db.service.findMany({
+    where: {
+      paused: 0,
+      type: { in: ['http', 'https'] }
+    }
+  });
 
   for (const service of services) {
-    if (service.url.startsWith('http')) {
-      // 1. SSL Check
+    // 1. SSL Check
+    if (service.url.startsWith('https') || service.type === 'https') {
       try {
         const sslResult = await checkSSL(service.url);
         if (sslResult) {
-          db.prepare('UPDATE services SET ssl_expiry = ? WHERE id = ?').run(sslResult.validTo.toISOString(), service.id);
+          await db.service.update({
+            where: { id: service.id },
+            data: { ssl_expiry: sslResult.validTo }
+          });
           console.log(`🔒 SSL updated for ${service.name}: ${sslResult.daysRemaining} days remaining`);
         }
       } catch (err) {
         console.error(`SSL check failed for ${service.name}:`, err.message);
       }
+    }
 
-      // 2. Domain Check
-      try {
-        const domainResult = await checkDomainExpiry(service.url);
-        if (domainResult) {
-          db.prepare('UPDATE services SET domain_expiry = ? WHERE id = ?').run(domainResult.expiryDate.toISOString(), service.id);
-          console.log(`globe Domain updated for ${service.name}: ${domainResult.daysRemaining} days remaining`);
-        }
-      } catch (err) {
-        console.error(`Domain check failed for ${service.name}:`, err.message);
+    // 2. Domain Check
+    try {
+      const domainResult = await checkDomainExpiry(service.url);
+      if (domainResult) {
+        await db.service.update({
+          where: { id: service.id },
+          data: { domain_expiry: domainResult.expiryDate }
+        });
+        console.log(`globe Domain updated for ${service.name}: ${domainResult.daysRemaining} days remaining`);
       }
+    } catch (err) {
+      console.error(`Domain check failed for ${service.name}:`, err.message);
+    }
 
-      // 3. GeoIP Check
-      // Only check if missing or periodically (for now, run every time check loop runs is fine as it's infrequent)
-      // But ip-api has rate limits (45/min). With small number of services it is okay.
-      try {
-        // Add small delay to respect rate limits if many services
-        await new Promise(r => setTimeout(r, 1500));
-
-        const geoResult = await checkServerLocation(service.url);
-        if (geoResult) {
-          db.prepare(`
-                  UPDATE services 
-                  SET server_country = ?, server_city = ?, server_lat = ?, server_lon = ?, region = ?
-                  WHERE id = ?
-              `).run(
-            geoResult.country,
-            geoResult.city,
-            geoResult.lat,
-            geoResult.lon,
-            `${geoResult.city}, ${geoResult.country}`, // Auto update region text too
-            service.id
-          );
-          console.log(`📍 Location updated for ${service.name}: ${geoResult.city}, ${geoResult.country}`);
-        }
-      } catch (err) {
-        console.error(`GeoIP check failed for ${service.name}:`, err.message);
+    // 3. GeoIP Check
+    try {
+      await new Promise(r => setTimeout(r, 1500));
+      const geoResult = await checkServerLocation(service.url);
+      if (geoResult) {
+        await db.service.update({
+          where: { id: service.id },
+          data: {
+            server_country: geoResult.country,
+            server_city: geoResult.city,
+            server_lat: geoResult.lat,
+            server_lon: geoResult.lon,
+            region: `${geoResult.city}, ${geoResult.country}`
+          }
+        });
+        console.log(`📍 Location updated for ${service.name}: ${geoResult.city}, ${geoResult.country}`);
       }
+    } catch (err) {
+      console.error(`GeoIP check failed for ${service.name}:`, err.message);
     }
   }
 }
-
-
 
 // Schedule SSL/Domain checks (every 12 hours)
 setTimeout(() => {

@@ -5,16 +5,26 @@ import { authMiddleware } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all categories (public)
-router.get('/public', (req, res) => {
+router.get('/public', async (req, res) => {
     try {
-        const categories = db.prepare(`
-            SELECT c.*, COUNT(s.id) as service_count
-            FROM categories c
-            LEFT JOIN services s ON s.category_id = c.id
-            GROUP BY c.id
-            ORDER BY c.sort_order ASC, c.name ASC
-        `).all();
-        res.json(categories);
+        const categories = await db.category.findMany({
+            orderBy: [
+                { sort_order: 'asc' },
+                { name: 'asc' }
+            ],
+            include: {
+                _count: {
+                    select: { services: true }
+                }
+            }
+        });
+
+        const formatted = categories.map(c => ({
+            ...c,
+            service_count: c._count.services
+        }));
+
+        res.json(formatted);
     } catch (error) {
         console.error('Error fetching categories:', error);
         res.status(500).json({ error: 'Failed to fetch categories' });
@@ -22,16 +32,26 @@ router.get('/public', (req, res) => {
 });
 
 // Get all categories (admin)
-router.get('/', authMiddleware, (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
     try {
-        const categories = db.prepare(`
-            SELECT c.*, COUNT(s.id) as service_count
-            FROM categories c
-            LEFT JOIN services s ON s.category_id = c.id
-            GROUP BY c.id
-            ORDER BY c.sort_order ASC, c.name ASC
-        `).all();
-        res.json(categories);
+        const categories = await db.category.findMany({
+            orderBy: [
+                { sort_order: 'asc' },
+                { name: 'asc' }
+            ],
+            include: {
+                _count: {
+                    select: { services: true }
+                }
+            }
+        });
+
+        const formatted = categories.map(c => ({
+            ...c,
+            service_count: c._count.services
+        }));
+
+        res.json(formatted);
     } catch (error) {
         console.error('Error fetching categories:', error);
         res.status(500).json({ error: 'Failed to fetch categories' });
@@ -39,7 +59,7 @@ router.get('/', authMiddleware, (req, res) => {
 });
 
 // Create category
-router.post('/', authMiddleware, (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
     try {
         const { name, description, sort_order } = req.body;
 
@@ -47,12 +67,14 @@ router.post('/', authMiddleware, (req, res) => {
             return res.status(400).json({ error: 'Name is required' });
         }
 
-        const result = db.prepare(`
-            INSERT INTO categories (name, description, sort_order)
-            VALUES (?, ?, ?)
-        `).run(name, description || '', sort_order || 0);
+        const category = await db.category.create({
+            data: {
+                name,
+                description: description || '',
+                sort_order: sort_order || 0
+            }
+        });
 
-        const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
         res.status(201).json(category);
     } catch (error) {
         console.error('Error creating category:', error);
@@ -61,7 +83,7 @@ router.post('/', authMiddleware, (req, res) => {
 });
 
 // Update category
-router.put('/:id', authMiddleware, (req, res) => {
+router.put('/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
         const { name, description, sort_order } = req.body;
@@ -70,13 +92,15 @@ router.put('/:id', authMiddleware, (req, res) => {
             return res.status(400).json({ error: 'Name is required' });
         }
 
-        db.prepare(`
-            UPDATE categories 
-            SET name = ?, description = ?, sort_order = ?
-            WHERE id = ?
-        `).run(name, description || '', sort_order || 0, id);
+        const category = await db.category.update({
+            where: { id: parseInt(id) },
+            data: {
+                name,
+                description: description || '',
+                sort_order: sort_order || 0
+            }
+        });
 
-        const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
         res.json(category);
     } catch (error) {
         console.error('Error updating category:', error);
@@ -85,10 +109,17 @@ router.put('/:id', authMiddleware, (req, res) => {
 });
 
 // Delete category
-router.delete('/:id', authMiddleware, (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
-        db.prepare('DELETE FROM categories WHERE id = ?').run(id);
+        // Check if has services? SQLite logic didn't seem to block or cascade explicitly in route, 
+        // relying on schema constraint (SET NULL or RESTRICT).
+        // Let's assume Prisma delete checks constraints.
+
+        await db.category.delete({
+            where: { id: parseInt(id) }
+        });
+
         res.json({ success: true });
     } catch (error) {
         console.error('Error deleting category:', error);

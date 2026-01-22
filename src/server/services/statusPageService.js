@@ -1,180 +1,283 @@
 import { db } from '../db.js';
 
 // Get all status pages
-export function getAllStatusPages() {
-  return db.prepare('SELECT * FROM status_pages ORDER BY is_default DESC, name ASC').all();
+export async function getAllStatusPages() {
+  return db.statusPage.findMany({
+    orderBy: [
+      { is_default: 'desc' },
+      { name: 'asc' }
+    ]
+  });
 }
 
-export function getStatusPageById(id) {
-  return db.prepare('SELECT * FROM status_pages WHERE id = ?').get(id);
+export async function getStatusPageById(id) {
+  return db.statusPage.findUnique({
+    where: { id: parseInt(id) }
+  });
 }
 
-export function getStatusPageBySlug(slug) {
-  return db.prepare('SELECT * FROM status_pages WHERE slug = ?').get(slug);
+export async function getStatusPageBySlug(slug) {
+  return db.statusPage.findUnique({
+    where: { slug }
+  });
 }
 
-export function getDefaultStatusPage() {
-  return db.prepare('SELECT * FROM status_pages WHERE is_default = 1').get();
+export async function getDefaultStatusPage() {
+  return db.statusPage.findFirst({
+    where: { is_default: 1 }
+  });
 }
 
-export function createStatusPage(data) {
-  // If this is the first status page or marked as default, set it as default
-  const count = db.prepare('SELECT COUNT(*) as count FROM status_pages').get();
-  const isDefault = count.count === 0 || data.is_default ? 1 : 0;
+export async function createStatusPage(data) {
+  // Check if default
+  const count = await db.statusPage.count();
+  const isDefault = count === 0 || data.is_default ? 1 : 0;
 
-  // If setting as default, unset other defaults
-  if (isDefault) {
-    db.prepare('UPDATE status_pages SET is_default = 0').run();
-  }
+  return db.$transaction(async (tx) => {
+    if (isDefault) {
+      await tx.statusPage.updateMany({
+        data: { is_default: 0 }
+      });
+    }
 
-  const result = db.prepare(`
-        INSERT INTO status_pages (slug, name, title, subtitle, navbar_title, logo_url, favicon_url, hero_bg_color, theme_mode, bg_pattern, monitor_style, meta_description, og_image_url, custom_css, is_default, is_public)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-    data.slug,
-    data.name,
-    data.title || data.name,
-    data.subtitle || 'Real-time system status',
-    data.navbar_title || null,
-    data.logo_url || null,
-    data.favicon_url || null,
-    data.hero_bg_color || '#1e2a38',
-    data.theme_mode || 'system',
-    data.bg_pattern || 'none',
-    data.monitor_style || 'bars',
-    data.meta_description || null,
-    data.og_image_url || null,
-    data.custom_css || null,
-    isDefault,
-    data.is_public !== false ? 1 : 0
-  );
-
-  return getStatusPageById(result.lastInsertRowid);
+    return tx.statusPage.create({
+      data: {
+        slug: data.slug,
+        name: data.name,
+        title: data.title || data.name,
+        subtitle: data.subtitle || 'Real-time system status',
+        navbar_title: data.navbar_title || null,
+        logo_url: data.logo_url || null,
+        favicon_url: data.favicon_url || null,
+        hero_bg_color: data.hero_bg_color || '#1e2a38',
+        theme_mode: data.theme_mode || 'system',
+        bg_pattern: data.bg_pattern || 'none',
+        monitor_style: data.monitor_style || 'bars',
+        meta_description: data.meta_description || null,
+        og_image_url: data.og_image_url || null,
+        custom_css: data.custom_css || null,
+        is_default: isDefault,
+        is_public: data.is_public !== false ? 1 : 0
+      }
+    });
+  });
 }
 
-export function updateStatusPage(id, data) {
-  const existing = getStatusPageById(id);
-  if (!existing) return null;
+export async function updateStatusPage(id, data) {
+  return db.$transaction(async (tx) => {
+    if (data.is_default) {
+      await tx.statusPage.updateMany({
+        data: { is_default: 0 }
+      });
+    }
 
-  // If setting as default, unset other defaults
-  if (data.is_default) {
-    db.prepare('UPDATE status_pages SET is_default = 0').run();
-  }
+    // Prisma update doesn't have COALESCE but undefined ignores the field update
+    // So simple update works if we only pass defined fields.
+    // However, data object might have undefineds?
+    // We should clean data object or just pass it as is (if API passes full obj or partial)
+    // The previous implementation used COALESCE(?, existing).
+    // Here we can fetch existing first if needed, OR just pass data if it contains the updates.
+    // Assuming data contains only fields to update.
 
-  db.prepare(`
-        UPDATE status_pages SET
-            slug = COALESCE(?, slug),
-            name = COALESCE(?, name),
-            title = COALESCE(?, title),
-            subtitle = COALESCE(?, subtitle),
-            navbar_title = ?,
-            logo_url = ?,
-            favicon_url = ?,
-            hero_bg_color = COALESCE(?, hero_bg_color),
-            theme_mode = COALESCE(?, theme_mode),
-            bg_pattern = COALESCE(?, bg_pattern),
-            monitor_style = COALESCE(?, monitor_style),
-            meta_description = ?,
-            og_image_url = ?,
-            custom_css = ?,
-            is_default = COALESCE(?, is_default),
-            is_public = COALESCE(?, is_public)
-        WHERE id = ?
-    `).run(
-    data.slug,
-    data.name,
-    data.title,
-    data.subtitle,
-    data.navbar_title !== undefined ? data.navbar_title : existing.navbar_title,
-    data.logo_url !== undefined ? data.logo_url : existing.logo_url,
-    data.favicon_url !== undefined ? data.favicon_url : existing.favicon_url,
-    data.hero_bg_color,
-    data.theme_mode,
-    data.bg_pattern,
-    data.monitor_style,
-    data.meta_description !== undefined ? data.meta_description : existing.meta_description,
-    data.og_image_url !== undefined ? data.og_image_url : existing.og_image_url,
-    data.custom_css !== undefined ? data.custom_css : existing.custom_css,
-    data.is_default !== undefined ? (data.is_default ? 1 : 0) : null,
-    data.is_public !== undefined ? (data.is_public ? 1 : 0) : null,
-    id
-  );
+    try {
+      const updateData = {};
+      if (data.slug !== undefined) updateData.slug = data.slug;
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.title !== undefined) updateData.title = data.title;
+      if (data.subtitle !== undefined) updateData.subtitle = data.subtitle;
+      if (data.navbar_title !== undefined) updateData.navbar_title = data.navbar_title;
+      if (data.logo_url !== undefined) updateData.logo_url = data.logo_url;
+      if (data.favicon_url !== undefined) updateData.favicon_url = data.favicon_url;
+      if (data.hero_bg_color !== undefined) updateData.hero_bg_color = data.hero_bg_color;
+      if (data.theme_mode !== undefined) updateData.theme_mode = data.theme_mode;
+      if (data.bg_pattern !== undefined) updateData.bg_pattern = data.bg_pattern;
+      if (data.monitor_style !== undefined) updateData.monitor_style = data.monitor_style;
+      if (data.meta_description !== undefined) updateData.meta_description = data.meta_description;
+      if (data.og_image_url !== undefined) updateData.og_image_url = data.og_image_url;
+      if (data.custom_css !== undefined) updateData.custom_css = data.custom_css;
+      if (data.is_default !== undefined) updateData.is_default = data.is_default ? 1 : 0;
+      if (data.is_public !== undefined) updateData.is_public = data.is_public ? 1 : 0;
 
-  return getStatusPageById(id);
+      return await tx.statusPage.update({
+        where: { id: parseInt(id) },
+        data: updateData
+      });
+    } catch (e) {
+      return null;
+    }
+  });
 }
 
-export function deleteStatusPage(id) {
-  const page = getStatusPageById(id);
+export async function deleteStatusPage(id) {
+  const pageId = parseInt(id);
+  const page = await getStatusPageById(pageId);
   if (!page) return null;
 
-  // Don't allow deleting the default page if it's the only one
-  const count = db.prepare('SELECT COUNT(*) as count FROM status_pages').get();
-  if (page.is_default && count.count > 1) {
-    // Set another page as default
-    db.prepare('UPDATE status_pages SET is_default = 1 WHERE id != ? LIMIT 1').run(id);
-  }
+  return db.$transaction(async (tx) => {
+    const count = await tx.statusPage.count();
+    if (page.is_default && count > 1) {
+      // Set another page as default
+      const other = await tx.statusPage.findFirst({
+        where: { id: { not: pageId } }
+      });
+      if (other) {
+        await tx.statusPage.update({
+          where: { id: other.id },
+          data: { is_default: 1 }
+        });
+      }
+    }
 
-  // Unassign services from this status page
-  db.prepare('UPDATE services SET status_page_id = NULL WHERE status_page_id = ?').run(id);
+    // Remove service assignments (cascade usually handles this if defined, but schema might not have cascade)
+    // status_page_services has onDelete: Cascade in schema? Let's assume manual cleanup to be safe unless checked.
+    // Actually schema usually has references but SQLite enforcement varies.
+    // Let's delete manually to be safe.
+    // Actually relations in schema usually sufficient for Prisma delete cascade if configured.
+    // But let's follow original logic: "UPDATE services SET status_page_id = NULL" ? 
+    // Original logic: "UPDATE services SET status_page_id = NULL". Wait, services table has status_page_id column?
+    // Wait, there is a `status_page_services` junction table AND a direct `status_page_id` on services table?
+    // Let's check `statusPageService.js` original code.
+    // Line 118: `db.prepare('UPDATE services SET status_page_id = NULL WHERE status_page_id = ?').run(id);`
+    // So yes, `services` table has `status_page_id`.
 
-  return db.prepare('DELETE FROM status_pages WHERE id = ?').run(id);
+    await tx.service.updateMany({
+      where: { status_page_id: pageId },
+      data: { status_page_id: null }
+    });
+
+    // Also delete from junction table `status_page_services`? 
+    // Original code didn't explicit delete from junction table here, maybe cascade or `services` column was legacy?
+    // But `status_page_services` exists (lines 124+).
+    // If schema has cascade, it's fine. If not, we should delete.
+    // `status_page_services` likely has FK to status_pages.
+
+    // Let's safe delete
+    await tx.statusPageService.deleteMany({
+      where: { status_page_id: pageId }
+    });
+
+    return tx.statusPage.delete({
+      where: { id: pageId }
+    });
+  });
 }
 
 // Get services assigned to a status page (using junction table)
-export function getServicesForStatusPage(statusPageId) {
+export async function getServicesForStatusPage(statusPageId) {
   if (statusPageId) {
-    return db.prepare(`
-      SELECT s.*, sps.sort_order
-      FROM services s
-      INNER JOIN status_page_services sps ON s.id = sps.service_id
-      WHERE sps.status_page_id = ?
-      ORDER BY sps.sort_order ASC, s.name ASC
-    `).all(statusPageId);
+    // Services linked via status_page_services
+    const entries = await db.statusPageService.findMany({
+      where: { status_page_id: parseInt(statusPageId) },
+      include: { service: true },
+      orderBy: [
+        { sort_order: 'asc' },
+        { service: { name: 'asc' } }
+      ]
+    });
+
+    return entries.map(e => ({
+      ...e.service,
+      sort_order: e.sort_order
+    }));
   }
   // For default/no specific page, get all services
-  return db.prepare('SELECT * FROM services ORDER BY name ASC').all();
+  return db.service.findMany({
+    orderBy: { name: 'asc' }
+  });
 }
 
 // Get service IDs for a status page
-export function getServiceIdsForStatusPage(statusPageId) {
-  const rows = db.prepare('SELECT service_id FROM status_page_services WHERE status_page_id = ?').all(statusPageId);
+export async function getServiceIdsForStatusPage(statusPageId) {
+  const rows = await db.statusPageService.findMany({
+    where: { status_page_id: parseInt(statusPageId) },
+    select: { service_id: true }
+  });
   return rows.map(r => r.service_id);
 }
 
 // Assign service to a status page (junction table)
-export function assignServiceToStatusPage(serviceId, statusPageId) {
+export async function assignServiceToStatusPage(serviceId, statusPageId) {
+  // insert or ignore/replace
+  // Prisma upsert
+  // Sort order? Defaults to 0 or null? schema says Int? @default(0)? 
+  // We can just create, if exists catch error (unique constraint).
   try {
-    return db.prepare('INSERT OR REPLACE INTO status_page_services (status_page_id, service_id) VALUES (?, ?)').run(statusPageId, serviceId);
+    await db.statusPageService.upsert({
+      where: {
+        status_page_id_service_id: {
+          status_page_id: parseInt(statusPageId),
+          service_id: parseInt(serviceId)
+        }
+      },
+      create: {
+        status_page_id: parseInt(statusPageId),
+        service_id: parseInt(serviceId)
+      },
+      update: {} // do nothing
+    });
   } catch (e) {
-    // Ignore duplicate
+    // ignore
   }
 }
 
 // Remove service from a status page
-export function removeServiceFromStatusPage(serviceId, statusPageId) {
-  return db.prepare('DELETE FROM status_page_services WHERE status_page_id = ? AND service_id = ?').run(statusPageId, serviceId);
+export async function removeServiceFromStatusPage(serviceId, statusPageId) {
+  return db.statusPageService.deleteMany({
+    where: {
+      status_page_id: parseInt(statusPageId),
+      service_id: parseInt(serviceId)
+    }
+  });
 }
 
 // Update all services for a status page (replace all, but preserve section assignments)
-export function updateStatusPageServices(statusPageId, serviceIds) {
-  // Get existing services with their section assignments
-  const existing = db.prepare('SELECT service_id, section_id FROM status_page_services WHERE status_page_id = ?').all(statusPageId);
-  const existingMap = new Map(existing.map(e => [e.service_id, e.section_id]));
+export async function updateStatusPageServices(statusPageId, serviceIds) {
+  const id = parseInt(statusPageId);
 
-  // Remove services that are no longer in the list
-  db.prepare('DELETE FROM status_page_services WHERE status_page_id = ? AND service_id NOT IN (' + serviceIds.map(() => '?').join(',') + ')').run(statusPageId, ...serviceIds);
+  return db.$transaction(async (tx) => {
+    // Get existing to preserve section_id
+    const existing = await tx.statusPageService.findMany({
+      where: { status_page_id: id }
+    });
+    const existingMap = new Map(existing.map(e => [e.service_id, e.section_id]));
 
-  // Add new services or update sort order for existing ones
-  const upsert = db.prepare(`
-    INSERT INTO status_page_services (status_page_id, service_id, sort_order, section_id) 
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(status_page_id, service_id) DO UPDATE SET sort_order = excluded.sort_order
-  `);
+    // Delete all (simplest way to "sync" without complex diffing, but slightly expensive if many)
+    // Or delete ones not in serviceIds
+    await tx.statusPageService.deleteMany({
+      where: {
+        status_page_id: id,
+        service_id: { notIn: serviceIds.map(Number) }
+      }
+    });
 
-  serviceIds.forEach((serviceId, index) => {
-    const existingSectionId = existingMap.get(serviceId) || null;
-    upsert.run(statusPageId, serviceId, index, existingSectionId);
+    // Upsert each
+    for (let i = 0; i < serviceIds.length; i++) {
+      const sid = parseInt(serviceIds[i]);
+      const sectionId = existingMap.get(sid) || null;
+
+      await tx.statusPageService.upsert({
+        where: {
+          status_page_id_service_id: {
+            status_page_id: id,
+            service_id: sid
+          }
+        },
+        update: {
+          sort_order: i
+        },
+        create: {
+          status_page_id: id,
+          service_id: sid,
+          sort_order: i,
+          section_id: sectionId
+        }
+      });
+    }
+
+    const rows = await tx.statusPageService.findMany({
+      where: { status_page_id: id },
+      select: { service_id: true }
+    });
+    return rows.map(r => r.service_id);
   });
-
-  return getServiceIdsForStatusPage(statusPageId);
 }

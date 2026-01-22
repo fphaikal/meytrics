@@ -15,8 +15,9 @@ import {
   TableCell,
   Divider
 } from "@heroui/react";
-import { ArrowLeft, ExternalLink, Pause, Play, Edit, RefreshCw, Activity, ShieldCheck, Lock, Clock, Calendar, AlertTriangle, CheckCircle, BarChart, Globe, Server, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Pause, Play, Edit, RefreshCw, Activity, ShieldCheck, Lock, Clock, Calendar, AlertTriangle, CheckCircle, BarChart, Globe, Server, ArrowUp, ArrowDown, Award, FileCode, Link as LinkIcon } from 'lucide-react';
 import { toast } from '../../lib/toast';
+import { cn, parseDate } from '../../lib/utils';
 import { getServices, getServicePings, getSettings, updateService, getServiceIncidents, getServicePingSummary } from '../../lib/api';
 import type { Service, Ping, ServiceIncident } from '../../lib/types';
 import { StatusIndicator } from '../StatusIndicator';
@@ -235,26 +236,29 @@ export function ServiceDetailPage() {
                         if (service.paused) return 'Monitoring Paused';
 
                         const status = service.current_status;
-                        let startTime: Date;
+                        let startTimeStr: string;
 
                         if (status === 'down') {
-                          // If DOWN, find the open incident to see when it started
                           const openIncident = incidents.find((i: ServiceIncident) => i.status === 'down' && !i.ended_at);
-                          startTime = openIncident ? new Date(openIncident.started_at.replace(' ', 'T') + 'Z') : new Date(service.created_at.replace(' ', 'T') + 'Z');
+                          startTimeStr = openIncident ? openIncident.started_at : service.created_at;
                         } else if (status === 'up') {
-                          // If UP, find the LAST resolved incident to see when we recovered
-                          // Sort by ended_at desc to find latest
                           const lastIncident = [...incidents]
                             .filter((i: ServiceIncident) => i.status === 'resolved' && i.ended_at)
                             .sort((a, b) => new Date(b.ended_at!).getTime() - new Date(a.ended_at!).getTime())[0];
-
-                          startTime = lastIncident ? new Date(lastIncident.ended_at!.replace(' ', 'T') + 'Z') : new Date(service.created_at.replace(' ', 'T') + 'Z');
+                          startTimeStr = lastIncident?.ended_at || service.created_at;
                         } else {
-                          // If unknown, just use created_at for now or 0
-                          startTime = new Date(service.created_at.replace(' ', 'T') + 'Z');
+                          startTimeStr = service.created_at;
+                        }
+
+                        const startTime = parseDate(startTimeStr);
+
+                        if (!startTime || isNaN(startTime.getTime())) {
+                          return '00:00:00:00';
                         }
 
                         const diffMs = Math.max(0, now.getTime() - startTime.getTime());
+                        if (isNaN(diffMs)) return '00:00:00:00';
+
                         const seconds = Math.floor(diffMs / 1000);
                         const minutes = Math.floor(seconds / 60);
                         const hours = Math.floor(minutes / 60);
@@ -282,10 +286,13 @@ export function ServiceDetailPage() {
                     (() => {
                       if (service.paused) return 'Paused';
 
-                      const lastCheck = new Date(pings[0].created_at.replace(' ', 'T') + 'Z');
-                      const diffInSeconds = Math.floor((now.getTime() - lastCheck.getTime()) / 1000);
+                      const lastCheck = parseDate(pings[0].created_at);
+                      if (!lastCheck) return 'Never';
 
-                      if (diffInSeconds < 60) return `${diffInSeconds}s ago`;
+                      const diffInSeconds = Math.floor((now.getTime() - lastCheck.getTime()) / 1000);
+                      if (isNaN(diffInSeconds)) return 'Unknown';
+
+                      if (diffInSeconds < 60) return `${Math.max(0, diffInSeconds)}s ago`;
                       if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
                       if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
                       return `${Math.floor(diffInSeconds / 86400)}d ago`;
@@ -557,9 +564,97 @@ export function ServiceDetailPage() {
               </div>
             </CardBody>
           </Card>
+
+          {/* Status Badges */}
+          <Card>
+            <CardBody className="p-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Award className="w-5 h-5 text-warning" />
+                <h3 className="text-lg font-bold text-foreground">Status Badges.</h3>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Status Badge</p>
+                  <div className="flex items-center justify-between gap-3 p-3 bg-default-100 rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto flex-1 pb-1 -mb-1">
+                      <img src={`/api/badges/${service.id}/status.svg`} alt="Service Status" className="h-5 max-w-none" />
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Tooltip content="Copy Markdown">
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          variant="flat"
+                          onPress={() => {
+                            const url = `${window.location.origin}/api/badges/${service.id}/status.svg`;
+                            navigator.clipboard.writeText(`[![${service.name} Status](${url})](${window.location.origin}/status/${service.id})`);
+                            toast.success('Markdown copied');
+                          }}
+                        >
+                          <FileCode className="w-4 h-4" />
+                        </Button>
+                      </Tooltip>
+                      <Tooltip content="Copy URL">
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          variant="flat"
+                          onPress={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/api/badges/${service.id}/status.svg`);
+                            toast.success('URL copied');
+                          }}
+                        >
+                          <LinkIcon className="w-4 h-4" />
+                        </Button>
+                      </Tooltip>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Uptime Badge (30 Days)</p>
+                  <div className="flex items-center justify-between gap-3 p-3 bg-default-100 rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto flex-1 pb-1 -mb-1">
+                      <img src={`/api/badges/${service.id}/uptime.svg?days=30`} alt="Service Uptime" className="h-5 max-w-none" />
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Tooltip content="Copy Markdown">
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          variant="flat"
+                          onPress={() => {
+                            const url = `${window.location.origin}/api/badges/${service.id}/uptime.svg?days=30`;
+                            navigator.clipboard.writeText(`[![${service.name} Uptime](${url})](${window.location.origin}/status/${service.id})`);
+                            toast.success('Markdown copied');
+                          }}
+                        >
+                          <FileCode className="w-4 h-4" />
+                        </Button>
+                      </Tooltip>
+                      <Tooltip content="Copy URL">
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          variant="flat"
+                          onPress={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/api/badges/${service.id}/uptime.svg?days=30`);
+                            toast.success('URL copied');
+                          }}
+                        >
+                          <LinkIcon className="w-4 h-4" />
+                        </Button>
+                      </Tooltip>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
         </div>
 
       </div>
-    </div>
+    </div >
   );
 }

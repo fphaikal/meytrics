@@ -2,40 +2,57 @@ import { db } from '../db.js';
 import crypto from 'crypto';
 
 // Get all subscribers
-export function getAllSubscribers() {
-  return db.prepare('SELECT * FROM subscribers ORDER BY created_at DESC').all();
+export async function getAllSubscribers() {
+  return db.subscriber.findMany({
+    orderBy: { created_at: 'desc' }
+  });
 }
 
-export function getSubscriberById(id) {
-  return db.prepare('SELECT * FROM subscribers WHERE id = ?').get(id);
+export async function getSubscriberById(id) {
+  return db.subscriber.findUnique({
+    where: { id: parseInt(id) }
+  });
 }
 
-export function getSubscriberByEmail(email) {
-  return db.prepare('SELECT * FROM subscribers WHERE email = ?').get(email);
+export async function getSubscriberByEmail(email) {
+  return db.subscriber.findUnique({
+    where: { email }
+  });
 }
 
-export function getVerifiedSubscribers() {
-  return db.prepare('SELECT * FROM subscribers WHERE verified = 1').all();
+export async function getVerifiedSubscribers() {
+  return db.subscriber.findMany({
+    where: { verified: 1 }
+  });
 }
 
-export function createSubscriber(email) {
-  const existing = getSubscriberByEmail(email);
+export async function createSubscriber(email) {
+  // Prisma throws specific error on unique constraint violation needed to be handled or checked first
+  const existing = await getSubscriberByEmail(email);
   if (existing) {
     throw new Error('Email already subscribed');
   }
 
   const token = crypto.randomBytes(32).toString('hex');
 
-  const result = db.prepare(`
-        INSERT INTO subscribers (email, verified, token)
-        VALUES (?, 0, ?)
-    `).run(email, token);
+  const result = await db.subscriber.create({
+    data: {
+      email,
+      verified: 0,
+      token
+    }
+  });
 
-  return { id: result.lastInsertRowid, email, token };
+  return { id: result.id, email, token };
 }
 
-export function verifySubscriber(token) {
-  const subscriber = db.prepare('SELECT * FROM subscribers WHERE token = ?').get(token);
+export async function verifySubscriber(token) {
+  // Find subscriber by token (token is not unique constraint index in schema? 
+  // It should be ideally, but schema.prisma shows `token String?`, no unique.
+  // So findFirst is safer.
+  const subscriber = await db.subscriber.findFirst({
+    where: { token }
+  });
 
   if (!subscriber) {
     throw new Error('Invalid verification token');
@@ -45,16 +62,22 @@ export function verifySubscriber(token) {
     return { alreadyVerified: true };
   }
 
-  db.prepare('UPDATE subscribers SET verified = 1, token = NULL WHERE id = ?').run(subscriber.id);
+  await db.subscriber.update({
+    where: { id: subscriber.id },
+    data: { verified: 1, token: null }
+  });
+
   return { success: true, email: subscriber.email };
 }
 
-export function deleteSubscriber(id) {
-  return db.prepare('DELETE FROM subscribers WHERE id = ?').run(id);
+export async function deleteSubscriber(id) {
+  return db.subscriber.delete({
+    where: { id: parseInt(id) }
+  });
 }
 
-export function unsubscribeByEmail(email) {
-  const subscriber = getSubscriberByEmail(email);
+export async function unsubscribeByEmail(email) {
+  const subscriber = await getSubscriberByEmail(email);
   if (!subscriber) {
     throw new Error('Email not found');
   }

@@ -2,7 +2,7 @@ export interface Service {
     id: number;
     name: string;
     url: string;
-    type: 'http' | 'tcp' | 'keyword' | 'dns';
+    type: 'http' | 'tcp' | 'keyword' | 'dns' | 'postgres' | 'mysql' | 'mongodb' | 'redis';
     interval: number;
     notify_down: boolean;
     paused: boolean;
@@ -10,8 +10,12 @@ export interface Service {
     current_status: 'up' | 'down' | 'paused' | null;
     uptime_percent: string;
     keyword?: string; // Keyword monitoring
+    keyword_condition?: 'exists' | 'not_exists'; // Keyword monitoring
+    keyword_case_sensitive?: boolean; // Keyword monitoring
     dns_record_type?: 'A' | 'AAAA' | 'CNAME' | 'MX' | 'TXT' | 'NS'; // DNS monitoring
     dns_expected_value?: string; // DNS monitoring
+    db_connection_string?: string; // Database monitoring
+    db_query?: string; // Database monitoring
     tags?: Tag[];
     ssl_expiry?: string;
     domain_expiry?: string;
@@ -241,15 +245,19 @@ export interface Tag {
 export interface ServiceUpdate {
     name?: string;
     url?: string;
-    type?: 'http' | 'tcp' | 'ping' | 'keyword' | 'dns';
+    type?: 'http' | 'tcp' | 'keyword' | 'dns' | 'postgres' | 'mysql' | 'mongodb' | 'redis';
     interval?: number;
     notify_down?: boolean;
     category_id?: number | null;
     tags?: string[];
     paused?: boolean;
     keyword?: string;
+    keyword_condition?: 'exists' | 'not_exists';
+    keyword_case_sensitive?: boolean;
     dns_record_type?: string;
     dns_expected_value?: string;
+    db_connection_string?: string;
+    db_query?: string;
     ssl_expiry?: string;
     domain_expiry?: string;
     region?: string;

@@ -6,12 +6,27 @@ import { defineConfig } from "vite"
 
 const packageJson = JSON.parse(fs.readFileSync('./package.json', 'utf-8'));
 
+import viteCompression from 'vite-plugin-compression';
+
 // https://vite.dev/config/
 export default defineConfig({
   define: {
     '__APP_VERSION__': JSON.stringify(packageJson.version),
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    viteCompression({
+      algorithm: 'brotliCompress', // Use Brotli for better compression
+      ext: '.br',
+      threshold: 1024, // Only compress files > 1KB
+    }),
+    viteCompression({
+      algorithm: 'gzip', // Also generate Gzip for fallback
+      ext: '.gz',
+      threshold: 1024,
+    })
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

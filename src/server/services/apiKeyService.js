@@ -7,63 +7,77 @@ function generateApiKey() {
 }
 
 // Get all API keys
-export function getAllApiKeys() {
-  return db.prepare('SELECT id, name, key, permissions, last_used, enabled, created_at FROM api_keys ORDER BY created_at DESC').all();
+export async function getAllApiKeys() {
+  // Prisma doesn't always select all fields by default if not specified, 
+  // but findMany() does returns all scalar fields.
+  return db.apiKey.findMany({
+    orderBy: { created_at: 'desc' }
+  });
 }
 
-export function getApiKeyById(id) {
-  return db.prepare('SELECT * FROM api_keys WHERE id = ?').get(id);
+export async function getApiKeyById(id) {
+  return db.apiKey.findUnique({
+    where: { id: parseInt(id) }
+  });
 }
 
-export function getApiKeyByKey(key) {
-  return db.prepare('SELECT * FROM api_keys WHERE key = ?').get(key);
+export async function getApiKeyByKey(key) {
+  return db.apiKey.findUnique({
+    where: { key }
+  });
 }
 
-export function createApiKey(data) {
+export async function createApiKey(data) {
   const key = generateApiKey();
-  const result = db.prepare(`
-        INSERT INTO api_keys (name, key, permissions, enabled)
-        VALUES (?, ?, ?, ?)
-    `).run(
-    data.name,
-    key,
-    JSON.stringify(data.permissions || ['read']),
-    data.enabled !== false ? 1 : 0
-  );
-  return { id: result.lastInsertRowid, name: data.name, key, permissions: data.permissions || ['read'] };
+  const apiKey = await db.apiKey.create({
+    data: {
+      name: data.name,
+      key,
+      permissions: JSON.stringify(data.permissions || ['read']),
+      enabled: data.enabled !== false ? 1 : 0
+    }
+  });
+  return { ...apiKey, permissions: data.permissions || ['read'] };
 }
 
-export function updateApiKey(id, data) {
-  const existing = getApiKeyById(id);
-  if (!existing) return null;
-
-  db.prepare(`
-        UPDATE api_keys SET 
-            name = COALESCE(?, name),
-            permissions = COALESCE(?, permissions),
-            enabled = COALESCE(?, enabled)
-        WHERE id = ?
-    `).run(
-    data.name,
-    data.permissions ? JSON.stringify(data.permissions) : null,
-    data.enabled !== undefined ? (data.enabled ? 1 : 0) : null,
-    id
-  );
-
-  return getApiKeyById(id);
+export async function updateApiKey(id, data) {
+  try {
+    const updated = await db.apiKey.update({
+      where: { id: parseInt(id) },
+      data: {
+        name: data.name,
+        permissions: data.permissions ? JSON.stringify(data.permissions) : undefined,
+        enabled: data.enabled !== undefined ? (data.enabled ? 1 : 0) : undefined
+      }
+    });
+    return updated;
+  } catch (error) {
+    return null;
+  }
 }
 
-export function deleteApiKey(id) {
-  return db.prepare('DELETE FROM api_keys WHERE id = ?').run(id);
+export async function deleteApiKey(id) {
+  return db.apiKey.delete({
+    where: { id: parseInt(id) }
+  });
 }
 
-export function updateLastUsed(id) {
-  db.prepare('UPDATE api_keys SET last_used = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+export async function updateLastUsed(id) {
+  // Fire and forget, or await?
+  // Prisma requires 'data'
+  try {
+    await db.apiKey.update({
+      where: { id: parseInt(id) },
+      data: { last_used: new Date() }
+    });
+  } catch (err) {
+    // ignore
+  }
 }
 
 // Validate API key and check permissions
-export function validateApiKey(key, requiredPermission = 'read') {
-  const apiKey = getApiKeyByKey(key);
+export async function validateApiKey(key, requiredPermission = 'read') {
+  const apiKey = await getApiKeyByKey(key);
 
   if (!apiKey) {
     return { valid: false, error: 'Invalid API key' };

@@ -3,24 +3,58 @@ import { db } from '../db.js';
 
 const router = express.Router();
 
+function generateBadge(label, value, color) {
+    const fontFamily = "Verdana, Geneva, 'DejaVu Sans', sans-serif";
+    const charWidth = 7;
+    const padding = 10;
+    const labelWidth = Math.max(Math.ceil(label.length * charWidth) + padding, 40);
+    const valueWidth = Math.max(Math.ceil(value.length * charWidth) + padding, 40);
+    const totalWidth = labelWidth + valueWidth;
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="20" aria-label="${escapeXml(label)}: ${escapeXml(value)}">
+    <g shape-rendering="crispEdges">
+        <rect width="${labelWidth}" height="20" fill="#2d2d2d"/>
+        <rect x="${labelWidth}" width="${valueWidth}" height="20" fill="${color}"/>
+    </g>
+    <g fill="#fff" text-anchor="middle" font-family="${fontFamily}" font-size="11" text-rendering="geometricPrecision">
+        <text x="${labelWidth / 2}" y="14" fill="#fff">${escapeXml(label)}</text>
+        <text x="${labelWidth + (valueWidth / 2)}" y="14" fill="#fff">${escapeXml(value)}</text>
+    </g>
+</svg>`;
+}
+
+function escapeXml(str) {
+    return str.replace(/[<>&'"]/g, c => ({
+        '<': '&lt;',
+        '>': '&gt;',
+        '&': '&amp;',
+        "'": '&apos;',
+        '"': '&quot;'
+    }[c]));
+}
+
 // Generate status badge SVG
-router.get('/:serviceId/status.svg', (req, res) => {
+router.get('/:serviceId/status.svg', async (req, res) => {
     try {
         const { serviceId } = req.params;
         const { label, color } = req.query;
+        const id = parseInt(serviceId);
 
-        const service = db.prepare(`
-            SELECT s.*, 
-                (SELECT status FROM pings WHERE service_id = s.id ORDER BY created_at DESC LIMIT 1) as current_status
-            FROM services s
-            WHERE s.id = ?
-        `).get(serviceId);
+        const service = await db.service.findUnique({
+            where: { id }
+        });
 
         if (!service) {
             return res.status(404).send('Service not found');
         }
 
-        const status = service.current_status || 'unknown';
+        const lastPing = await db.ping.findFirst({
+            where: { service_id: id },
+            orderBy: { created_at: 'desc' },
+            select: { status: true }
+        });
+
+        const status = lastPing?.status || 'unknown';
         const statusLabel = status === 'up' ? 'operational' : status === 'down' ? 'down' : 'unknown';
         const labelText = label || service.name;
 
@@ -41,29 +75,41 @@ router.get('/:serviceId/status.svg', (req, res) => {
 });
 
 // Generate uptime badge SVG
-router.get('/:serviceId/uptime.svg', (req, res) => {
+router.get('/:serviceId/uptime.svg', async (req, res) => {
     try {
         const { serviceId } = req.params;
         const { label, days } = req.query;
+        const id = parseInt(serviceId);
 
-        const service = db.prepare('SELECT * FROM services WHERE id = ?').get(serviceId);
+        const service = await db.service.findUnique({
+            where: { id }
+        });
 
         if (!service) {
             return res.status(404).send('Service not found');
         }
 
         const daysCount = parseInt(days) || 30;
-        const stats = db.prepare(`
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as up_count
-            FROM pings 
-            WHERE service_id = ? 
-            AND created_at > datetime('now', '-${daysCount} days')
-        `).get(serviceId);
+        const dateLimit = new Date();
+        dateLimit.setDate(dateLimit.getDate() - daysCount);
 
-        const uptimePercent = stats.total > 0
-            ? ((stats.up_count / stats.total) * 100).toFixed(2)
+        const total = await db.ping.count({
+            where: {
+                service_id: id,
+                created_at: { gte: dateLimit }
+            }
+        });
+
+        const upCount = await db.ping.count({
+            where: {
+                service_id: id,
+                created_at: { gte: dateLimit },
+                status: 'up'
+            }
+        });
+
+        const uptimePercent = total > 0
+            ? ((upCount / total) * 100).toFixed(2)
             : '100.00';
 
         const labelText = label || `uptime ${daysCount}d`;
@@ -82,42 +128,5 @@ router.get('/:serviceId/uptime.svg', (req, res) => {
         res.status(500).send('Error generating badge');
     }
 });
-
-function generateBadge(label, value, color) {
-    const labelWidth = Math.max(label.length * 7, 40);
-    const valueWidth = Math.max(value.length * 7, 40);
-    const totalWidth = labelWidth + valueWidth + 20;
-
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="20" viewBox="0 0 ${totalWidth} 20">
-    <linearGradient id="smooth" x2="0" y2="100%">
-        <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
-        <stop offset="1" stop-opacity=".1"/>
-    </linearGradient>
-    <clipPath id="round">
-        <rect width="${totalWidth}" height="20" rx="3" fill="#fff"/>
-    </clipPath>
-    <g clip-path="url(#round)">
-        <rect width="${labelWidth + 10}" height="20" fill="#555"/>
-        <rect x="${labelWidth + 10}" width="${valueWidth + 10}" height="20" fill="${color}"/>
-        <rect width="${totalWidth}" height="20" fill="url(#smooth)"/>
-    </g>
-    <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
-        <text x="${(labelWidth + 10) / 2}" y="15" fill="#010101" fill-opacity=".3">${escapeXml(label)}</text>
-        <text x="${(labelWidth + 10) / 2}" y="14" fill="#fff">${escapeXml(label)}</text>
-        <text x="${labelWidth + 10 + (valueWidth + 10) / 2}" y="15" fill="#010101" fill-opacity=".3">${escapeXml(value)}</text>
-        <text x="${labelWidth + 10 + (valueWidth + 10) / 2}" y="14" fill="#fff">${escapeXml(value)}</text>
-    </g>
-</svg>`;
-}
-
-function escapeXml(str) {
-    return str.replace(/[<>&'"]/g, c => ({
-        '<': '&lt;',
-        '>': '&gt;',
-        '&': '&amp;',
-        "'": '&apos;',
-        '"': '&quot;'
-    }[c]));
-}
 
 export default router;

@@ -1,24 +1,28 @@
 import { useNavigate, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Tags, Info, Share2 } from 'lucide-react';
+import { Suspense, lazy } from 'react';
+import { Spinner } from "@heroui/react";
 
-import { CategoriesPage } from './admin/CategoriesPage';
-import { TagsPage } from './admin/TagsPage';
-import { IncidentsPage } from './admin/IncidentsPage';
-import { MaintenancesPage } from './admin/MaintenancesPage';
-import { IntegrationsPage } from './admin/IntegrationsPage';
-import { SubscribersPage } from './admin/SubscribersPage';
-import { ApiKeysPage } from './admin/ApiKeysPage';
-import { StatusOverridesPage } from './admin/StatusOverridesPage';
-import { StatusPagesPage } from './admin/StatusPagesPage';
-import { ServicesPage } from './admin/ServicesPage';
-import { AddServicePage } from './admin/AddServicePage';
-import { ServiceDetailPage } from './admin/ServiceDetailPage';
-import { EditServicePage } from './admin/EditServicePage';
-import { AnnouncementsPage } from './admin/AnnouncementsPage';
-import { EditStatusPagePage } from './admin/EditStatusPagePage';
-import { IncidentDetailPage } from './admin/IncidentDetailPage';
-import { AboutPage } from './admin/AboutPage';
-import { SettingsPage } from './admin/SettingsPage';
+// Lazy load admin pages
+const CategoriesPage = lazy(() => import('./admin/CategoriesPage').then(module => ({ default: module.CategoriesPage })));
+const TagsPage = lazy(() => import('./admin/TagsPage').then(module => ({ default: module.TagsPage })));
+const IncidentsPage = lazy(() => import('./admin/IncidentsPage').then(module => ({ default: module.IncidentsPage })));
+const MaintenancesPage = lazy(() => import('./admin/MaintenancesPage').then(module => ({ default: module.MaintenancesPage })));
+const IntegrationsPage = lazy(() => import('./admin/IntegrationsPage').then(module => ({ default: module.IntegrationsPage })));
+const SubscribersPage = lazy(() => import('./admin/SubscribersPage').then(module => ({ default: module.SubscribersPage })));
+const ApiKeysPage = lazy(() => import('./admin/ApiKeysPage').then(module => ({ default: module.ApiKeysPage })));
+const StatusOverridesPage = lazy(() => import('./admin/StatusOverridesPage').then(module => ({ default: module.StatusOverridesPage })));
+const StatusPagesPage = lazy(() => import('./admin/StatusPagesPage').then(module => ({ default: module.StatusPagesPage })));
+const ServicesPage = lazy(() => import('./admin/ServicesPage').then(module => ({ default: module.ServicesPage })));
+const AddServicePage = lazy(() => import('./admin/AddServicePage').then(module => ({ default: module.AddServicePage })));
+const ServiceDetailPage = lazy(() => import('./admin/ServiceDetailPage').then(module => ({ default: module.ServiceDetailPage })));
+const EditServicePage = lazy(() => import('./admin/EditServicePage').then(module => ({ default: module.EditServicePage })));
+const AnnouncementsPage = lazy(() => import('./admin/AnnouncementsPage').then(module => ({ default: module.AnnouncementsPage })));
+const EditStatusPagePage = lazy(() => import('./admin/EditStatusPagePage').then(module => ({ default: module.EditStatusPagePage })));
+const IncidentDetailPage = lazy(() => import('./admin/IncidentDetailPage').then(module => ({ default: module.IncidentDetailPage })));
+const AboutPage = lazy(() => import('./admin/AboutPage').then(module => ({ default: module.AboutPage })));
+const SettingsPage = lazy(() => import('./admin/SettingsPage').then(module => ({ default: module.SettingsPage })));
+
 import { ThemeToggle } from './ThemeToggle';
 
 
@@ -176,26 +180,32 @@ export function AdminDashboard() {
 
         {/* Content Area */}
         <div className="p-8">
-          <Routes>
-            <Route index element={<ServicesPage />} />
-            <Route path="/services/new" element={<AddServicePage />} />
-            <Route path="/services/:id" element={<ServiceDetailPage />} />
-            <Route path="/services/:id/edit" element={<EditServicePage />} />
-            <Route path="/categories" element={<CategoriesPage />} />
-            <Route path="/tags" element={<TagsPage />} />
-            <Route path="incidents" element={<IncidentsPage />} />
-            <Route path="incidents/:id" element={<IncidentDetailPage />} />
-            <Route path="announcements" element={<AnnouncementsPage />} />
-            <Route path="maintenances" element={<MaintenancesPage />} />
-            <Route path="integrations" element={<IntegrationsPage />} />
-            <Route path="subscribers" element={<SubscribersPage />} />
-            <Route path="api-keys" element={<ApiKeysPage />} />
-            <Route path="status-overrides" element={<StatusOverridesPage />} />
-            <Route path="status-pages" element={<StatusPagesPage />} />
-            <Route path="status-pages/:id/edit" element={<EditStatusPagePage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="about" element={<AboutPage />} />
-          </Routes>
+          <Suspense fallback={
+            <div className="flex items-center justify-center h-64">
+              <Spinner size="lg" color="primary" />
+            </div>
+          }>
+            <Routes>
+              <Route index element={<ServicesPage />} />
+              <Route path="/services/new" element={<AddServicePage />} />
+              <Route path="/services/:id" element={<ServiceDetailPage />} />
+              <Route path="/services/:id/edit" element={<EditServicePage />} />
+              <Route path="/categories" element={<CategoriesPage />} />
+              <Route path="/tags" element={<TagsPage />} />
+              <Route path="incidents" element={<IncidentsPage />} />
+              <Route path="incidents/:id" element={<IncidentDetailPage />} />
+              <Route path="announcements" element={<AnnouncementsPage />} />
+              <Route path="maintenances" element={<MaintenancesPage />} />
+              <Route path="integrations" element={<IntegrationsPage />} />
+              <Route path="subscribers" element={<SubscribersPage />} />
+              <Route path="api-keys" element={<ApiKeysPage />} />
+              <Route path="status-overrides" element={<StatusOverridesPage />} />
+              <Route path="status-pages" element={<StatusPagesPage />} />
+              <Route path="status-pages/:id/edit" element={<EditStatusPagePage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="about" element={<AboutPage />} />
+            </Routes>
+          </Suspense>
         </div>
       </main>
     </div>

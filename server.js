@@ -56,9 +56,12 @@ const authLimiter = rateLimit({
   message: { error: 'Too many login attempts, please try again later.' }
 });
 
+import compression from 'compression';
+
 // Apply Middleware
 app.use(limiter); // Global rate limit
 app.use(cors());
+app.use(compression()); // Compress all responses
 app.use(express.json());
 
 // Initialize database

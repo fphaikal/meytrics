@@ -15,7 +15,7 @@ import {
   Switch
 } from "@heroui/react";
 import { SplitSection } from '../ui/SplitSection';
-import { ArrowLeft, Save, Settings, Activity, Shield, Clock, FileCode, Tag, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Save, Settings, Activity, Shield, Clock, FileCode, Tag, Plus, Trash2, Globe, Search, Network, Wifi, Database } from 'lucide-react';
 import { toast } from '../../lib/toast';
 import { getServices, getCategories, updateService, getTags, getServiceTags, bulkUpdateTags } from '../../lib/api';
 import type { Service, ServiceUpdate, Category } from '../../lib/types';
@@ -122,7 +122,14 @@ export function EditServicePage() {
           auth_user: service.auth_user || '',
           auth_pass: service.auth_pass || '',
           notification_repeat: service.notification_repeat || 0,
-          notification_delay: service.notification_delay || 0
+          notification_delay: service.notification_delay || 0,
+          keyword: service.keyword,
+          keyword_condition: service.keyword_condition || 'exists',
+          keyword_case_sensitive: !!service.keyword_case_sensitive,
+          dns_record_type: service.dns_record_type,
+          dns_expected_value: service.dns_expected_value,
+          db_connection_string: service.db_connection_string,
+          db_query: service.db_query
         });
         setLoading(false);
       }
@@ -232,17 +239,69 @@ export function EditServicePage() {
                 <Select
                   label="Monitor Type"
                   labelPlacement="outside"
-                  selectedKeys={formData.type ? [formData.type] : []}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value as 'http' | 'tcp' | 'ping' })}
+                  selectedKeys={['postgres', 'mysql', 'mongodb', 'redis'].includes(formData.type as string) ? ['database'] : [formData.type as string]}
+                  disallowEmptySelection={true}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'database') {
+                      setFormData({ ...formData, type: 'postgres' }); // Default to postgres
+                    } else if (val) {
+                      setFormData({ ...formData, type: val as any });
+                    }
+                  }}
                 >
-                  <SelectItem key="http">HTTP(S)</SelectItem>
-                  <SelectItem key="keyword">Keyword</SelectItem>
-                  <SelectItem key="dns">DNS</SelectItem>
-                  <SelectItem key="tcp">TCP Port</SelectItem>
-                  <SelectItem key="ping">Ping</SelectItem>
+                  <SelectItem key="http" startContent={<Globe className="w-4 h-4" />}>HTTP(S)</SelectItem>
+                  <SelectItem key="keyword" startContent={<Search className="w-4 h-4" />}>Keyword</SelectItem>
+                  <SelectItem key="dns" startContent={<Network className="w-4 h-4" />}>DNS</SelectItem>
+                  <SelectItem key="tcp" startContent={<Wifi className="w-4 h-4" />}>TCP Port</SelectItem>
+                  <SelectItem key="ping" startContent={<Activity className="w-4 h-4" />}>Ping</SelectItem>
+                  <SelectItem key="database" startContent={<Database className="w-4 h-4" />}>Database</SelectItem>
                 </Select>
                 <p className="text-xs text-default-400">How to check this service</p>
               </div>
+
+              {/* Database Engine Selection */}
+              {['postgres', 'mysql', 'mongodb', 'redis'].includes(formData.type as string) && (
+                <div className="space-y-1">
+                  <Select
+                    label="Database Engine"
+                    labelPlacement="outside"
+                    selectedKeys={[formData.type as string]}
+                    disallowEmptySelection={true}
+                    onChange={(e) => {
+                      if (e.target.value) setFormData({ ...formData, type: e.target.value as any })
+                    }}
+                    startContent={<Database className="w-4 h-4" />}
+                  >
+                    <SelectItem key="postgres" startContent={
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Z" />
+                        <path d="M12 12a3 3 0 1 0 3-3" />
+                      </svg>
+                    }>PostgreSQL</SelectItem>
+                    <SelectItem key="mysql" startContent={
+                      <svg className="w-4 h-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                      </svg>
+                    }>MySQL / MariaDB</SelectItem>
+                    <SelectItem key="mongodb" startContent={
+                      <svg className="w-4 h-4 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                        <path d="M12 8v4" />
+                        <path d="M12 16h.01" />
+                      </svg>
+                    }>MongoDB</SelectItem>
+                    <SelectItem key="redis" startContent={
+                      <svg className="w-4 h-4 text-red-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 4h16v16H4z" />
+                        <path d="M4 8h16" />
+                        <path d="M4 12h16" />
+                        <path d="M4 16h16" />
+                      </svg>
+                    }>Redis</SelectItem>
+                  </Select>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <Input
@@ -250,7 +309,7 @@ export function EditServicePage() {
                   labelPlacement="outside"
                   value={formData.name}
                   onValueChange={(value) => setFormData({ ...formData, name: value })}
-                  placeholder="e.g. Production API"
+                  placeholder="e.g. Production Database"
                   isRequired
                   description="A friendly name to identify this service"
                 />
@@ -272,15 +331,121 @@ export function EditServicePage() {
                 </div>
               </div>
 
-              <Input
-                label="URL"
-                labelPlacement="outside"
-                value={formData.url}
-                onValueChange={(value) => setFormData({ ...formData, url: value })}
-                placeholder="https://api.example.com/health"
-                isRequired
-                description="The endpoint to monitor"
-              />
+              {!['postgres', 'mysql', 'mongodb', 'redis'].includes(formData.type as string) && (
+                <Input
+                  label="URL"
+                  labelPlacement="outside"
+                  value={formData.url}
+                  onValueChange={(value) => setFormData({ ...formData, url: value })}
+                  placeholder="https://api.example.com/health"
+                  isRequired
+                  description="The endpoint to monitor"
+                />
+              )}
+
+
+
+              {/* Keyword Fields */}
+              {formData.type === 'keyword' && (
+                <div className="">
+                  <h3 className="text-sm font-medium mb-10">Keyword Configuration</h3>
+                  <Input
+                    label="Keyword to Match"
+                    labelPlacement="outside"
+                    placeholder="e.g. System Normal"
+                    value={formData.keyword || ''}
+                    onValueChange={(value) => setFormData({ ...formData, keyword: value })}
+                    description="The string to search for in the response body"
+                    isRequired
+                  />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 items-start">
+                    <Select
+                      label="Condition"
+                      labelPlacement="outside"
+                      selectedKeys={[formData.keyword_condition || 'exists']}
+                      onChange={(e) => setFormData({ ...formData, keyword_condition: e.target.value as 'exists' | 'not_exists' })}
+                    >
+                      <SelectItem key="exists">Start incident when keyword MISSING</SelectItem>
+                      <SelectItem key="not_exists">Start incident when keyword EXISTS</SelectItem>
+                    </Select>
+
+                    <div className="flex items-center justify-between p-3 bg-white dark:bg-default-100 rounded-lg border border-default-200">
+                      <div className="flex flex-col">
+                        <span className="text-sm">Case-sensitive check</span>
+                        <span className="text-xs text-default-400">Match exact casing</span>
+                      </div>
+                      <Switch
+                        isSelected={formData.keyword_case_sensitive}
+                        onValueChange={(isSelected) => setFormData({ ...formData, keyword_case_sensitive: isSelected })}
+                        size="sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* DNS Fields */}
+              {formData.type === 'dns' && (
+                <div className="">
+                  <h3 className="text-sm font-medium mb-4">DNS Configuration</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                    <Select
+                      label="Record Type"
+                      labelPlacement="outside"
+                      selectedKeys={[formData.dns_record_type || 'A']}
+                      onChange={(e) => setFormData({ ...formData, dns_record_type: e.target.value as any || 'A' })}
+                    >
+                      <SelectItem key="A">A (IPv4)</SelectItem>
+                      <SelectItem key="AAAA">AAAA (IPv6)</SelectItem>
+                      <SelectItem key="CNAME">CNAME</SelectItem>
+                      <SelectItem key="MX">MX</SelectItem>
+                      <SelectItem key="TXT">TXT</SelectItem>
+                      <SelectItem key="NS">NS</SelectItem>
+                    </Select>
+
+                    <Input
+                      label="Expected Value (Optional)"
+                      labelPlacement="outside"
+                      placeholder="e.g. 1.2.3.4"
+                      value={formData.dns_expected_value || ''}
+                      onValueChange={(value) => setFormData({ ...formData, dns_expected_value: value })}
+                      description="If set, the monitor will fail if the resolved record value doesn't contain this text."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Database Fields */}
+              {['postgres', 'mysql', 'mongodb', 'redis'].includes(formData.type as string) && (
+                <div className="space-y-8">
+                  <h3 className="text-sm font-medium">Database Configuration</h3>
+                  <Input
+                    label="Connection String"
+                    labelPlacement="outside"
+                    placeholder={
+                      formData.type === 'postgres' ? 'postgres://user:pass@host:5432/db' :
+                        formData.type === 'mysql' ? 'mysql://user:pass@host:3306/db' :
+                          formData.type === 'mongodb' ? 'mongodb://user:pass@host:27017/db' :
+                            'redis://:pass@host:6379'
+                    }
+                    value={formData.db_connection_string || ''}
+                    onValueChange={(value) => setFormData({ ...formData, db_connection_string: value, url: value })}
+                    description="Full connection URI including credentials"
+                    isRequired
+                  />
+                  {formData.type !== 'mongodb' && formData.type !== 'redis' && (
+                    <Input
+                      label="Health Check Query (Optional)"
+                      labelPlacement="outside"
+                      placeholder="SELECT 1"
+                      value={formData.db_query || ''}
+                      onValueChange={(value) => setFormData({ ...formData, db_query: value })}
+                      description="Custom SQL query to verify database health"
+                    />
+                  )}
+                </div>
+              )}
 
               <div className="space-y-4 mt-6">
                 <label className="text-sm font-medium">Check Interval</label>
@@ -290,7 +455,7 @@ export function EditServicePage() {
                   maxValue={3600}
                   value={formData.interval || 60}
                   onChange={(value) => setFormData({ ...formData, interval: value as number })}
-                  className="w-full"
+                  className="w-full mt-2"
                   showSteps={false}
                   marks={[
                     { value: 60, label: '1m' },
@@ -358,52 +523,7 @@ export function EditServicePage() {
 
 
 
-              {/* Keyword Fields */}
-              {formData.type === 'keyword' && (
-                <div className="bg-default-50 p-4 rounded-lg space-y-3">
-                  <h3 className="text-sm font-medium">Keyword Configuration</h3>
-                  <Input
-                    label="Keyword to Match"
-                    labelPlacement="outside"
-                    placeholder="e.g. System Normal"
-                    value={formData.keyword || ''}
-                    onValueChange={(value) => setFormData({ ...formData, keyword: value })}
-                    description="The monitor will be marked DOWN if this keyword is missing from the response body."
-                    isRequired
-                  />
-                </div>
-              )}
 
-              {/* DNS Fields */}
-              {formData.type === 'dns' && (
-                <div className="bg-default-50 p-4 rounded-lg space-y-4">
-                  <h3 className="text-sm font-medium">DNS Configuration</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Select
-                      label="Record Type"
-                      labelPlacement="outside"
-                      selectedKeys={[formData.dns_record_type || 'A']}
-                      onChange={(e) => setFormData({ ...formData, dns_record_type: e.target.value as any || 'A' })}
-                    >
-                      <SelectItem key="A">A (IPv4)</SelectItem>
-                      <SelectItem key="AAAA">AAAA (IPv6)</SelectItem>
-                      <SelectItem key="CNAME">CNAME</SelectItem>
-                      <SelectItem key="MX">MX</SelectItem>
-                      <SelectItem key="TXT">TXT</SelectItem>
-                      <SelectItem key="NS">NS</SelectItem>
-                    </Select>
-
-                    <Input
-                      label="Expected Value (Optional)"
-                      labelPlacement="outside"
-                      placeholder="e.g. 1.2.3.4"
-                      value={formData.dns_expected_value || ''}
-                      onValueChange={(value) => setFormData({ ...formData, dns_expected_value: value })}
-                      description="If set, the monitor will fail if the resolved record value doesn't contain this text."
-                    />
-                  </div>
-                </div>
-              )}
 
 
             </CardBody>

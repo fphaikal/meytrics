@@ -1,7 +1,8 @@
 import { db } from '../db.js';
 
-function getSettings() {
-  const settings = db.prepare('SELECT * FROM settings').all();
+async function getSettings() {
+  // settings table has key, value columns
+  const settings = await db.setting.findMany();
   const settingsObj = {};
   settings.forEach(s => {
     settingsObj[s.key] = s.value;
@@ -9,18 +10,26 @@ function getSettings() {
   return settingsObj;
 }
 
-function getEnabledWebhooks() {
-  return db.prepare('SELECT * FROM webhooks WHERE enabled = 1').all();
+async function getEnabledWebhooks() {
+  return db.webhook.findMany({
+    where: { enabled: 1 }
+  });
 }
 
 function logAlert(serviceId, type, message) {
-  db.prepare('INSERT INTO alert_history (service_id, type, message) VALUES (?, ?, ?)')
-    .run(serviceId, type, message);
+  // Alert logging can be async/fire-and-forget
+  db.alertHistory.create({
+    data: {
+      service_id: serviceId,
+      type,
+      message
+    }
+  }).catch(err => console.error('Failed to log alert:', err));
 }
 
 // Format payload for different webhook types
-function formatPayload(webhook, service, eventType, details) {
-  const settings = getSettings();
+async function formatPayload(webhook, service, eventType, details) {
+  const settings = await getSettings();
   const pageTitle = settings.page_title || 'MEYTRICS';
   const siteUrl = settings.site_url || '';
 
@@ -44,7 +53,7 @@ function formatPayload(webhook, service, eventType, details) {
             },
             {
               name: eventType === 'down' ? 'Error' : 'Response Time',
-              value: details,
+              value: String(details),
               inline: true
             }
           ],
@@ -118,7 +127,7 @@ function formatPayload(webhook, service, eventType, details) {
           url: service.url,
           type: service.type
         },
-        details: details,
+        details: String(details),
         timestamp: timestamp,
         source: pageTitle,
         status_page_url: siteUrl
@@ -155,7 +164,7 @@ async function sendWebhook(webhook, payload) {
 }
 
 export async function triggerWebhooks(eventType, service, details) {
-  const webhooks = getEnabledWebhooks();
+  const webhooks = await getEnabledWebhooks();
 
   for (const webhook of webhooks) {
     const events = JSON.parse(webhook.events || '["down","recovery"]');
@@ -164,7 +173,7 @@ export async function triggerWebhooks(eventType, service, details) {
       continue;
     }
 
-    const payload = formatPayload(webhook, service, eventType, details);
+    const payload = await formatPayload(webhook, service, eventType, details);
     await sendWebhook(webhook, payload);
   }
 
@@ -176,64 +185,60 @@ export async function triggerWebhooks(eventType, service, details) {
 }
 
 // CRUD operations for webhooks
-export function getAllWebhooks() {
-  return db.prepare('SELECT * FROM webhooks ORDER BY created_at DESC').all();
+export async function getAllWebhooks() {
+  return db.webhook.findMany({
+    orderBy: { created_at: 'desc' }
+  });
 }
 
-export function getWebhookById(id) {
-  return db.prepare('SELECT * FROM webhooks WHERE id = ?').get(id);
+export async function getWebhookById(id) {
+  return db.webhook.findUnique({
+    where: { id: parseInt(id) }
+  });
 }
 
-export function createWebhook(data) {
-  const result = db.prepare(`
-        INSERT INTO webhooks (name, url, type, events, headers, config, enabled)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-    data.name,
-    data.url,
-    data.type || 'custom',
-    JSON.stringify(data.events || ['down', 'recovery']),
-    JSON.stringify(data.headers || {}),
-    JSON.stringify(data.config || {}),
-    data.enabled !== false ? 1 : 0
-  );
-  return getWebhookById(result.lastInsertRowid);
+export async function createWebhook(data) {
+  return db.webhook.create({
+    data: {
+      name: data.name,
+      url: data.url,
+      type: data.type || 'custom',
+      events: JSON.stringify(data.events || ['down', 'recovery']),
+      headers: JSON.stringify(data.headers || {}),
+      config: JSON.stringify(data.config || {}),
+      enabled: data.enabled !== false ? 1 : 0
+    }
+  });
 }
 
-export function updateWebhook(id, data) {
-  const existing = getWebhookById(id);
-  if (!existing) return null;
-
-  db.prepare(`
-        UPDATE webhooks SET 
-            name = COALESCE(?, name),
-            url = COALESCE(?, url),
-            type = COALESCE(?, type),
-            events = COALESCE(?, events),
-            headers = COALESCE(?, headers),
-            config = COALESCE(?, config),
-            enabled = COALESCE(?, enabled)
-        WHERE id = ?
-    `).run(
-    data.name,
-    data.url,
-    data.type,
-    data.events ? JSON.stringify(data.events) : null,
-    data.headers ? JSON.stringify(data.headers) : null,
-    data.config ? JSON.stringify(data.config) : null,
-    data.enabled !== undefined ? (data.enabled ? 1 : 0) : null,
-    id
-  );
-
-  return getWebhookById(id);
+export async function updateWebhook(id, data) {
+  try {
+    return await db.webhook.update({
+      where: { id: parseInt(id) },
+      data: {
+        name: data.name,
+        url: data.url,
+        type: data.type,
+        events: data.events ? JSON.stringify(data.events) : undefined,
+        headers: data.headers ? JSON.stringify(data.headers) : undefined,
+        config: data.config ? JSON.stringify(data.config) : undefined,
+        enabled: data.enabled !== undefined ? (data.enabled ? 1 : 0) : undefined
+      }
+    });
+  } catch (error) {
+    // Return null if record not found
+    return null;
+  }
 }
 
-export function deleteWebhook(id) {
-  return db.prepare('DELETE FROM webhooks WHERE id = ?').run(id);
+export async function deleteWebhook(id) {
+  return db.webhook.delete({
+    where: { id: parseInt(id) }
+  });
 }
 
 export async function testWebhook(id) {
-  const webhook = getWebhookById(id);
+  const webhook = await getWebhookById(id);
   if (!webhook) {
     throw new Error('Webhook not found');
   }
@@ -245,7 +250,7 @@ export async function testWebhook(id) {
     type: 'http'
   };
 
-  const payload = formatPayload(webhook, testService, 'down', 'This is a test notification');
+  const payload = await formatPayload(webhook, testService, 'down', 'This is a test notification');
   const success = await sendWebhook(webhook, payload);
 
   if (!success) {
@@ -256,12 +261,23 @@ export async function testWebhook(id) {
 }
 
 // Get alert history
-export function getAlertHistory(limit = 100) {
-  return db.prepare(`
-        SELECT ah.*, s.name as service_name, s.url as service_url
-        FROM alert_history ah
-        LEFT JOIN services s ON ah.service_id = s.id
-        ORDER BY ah.created_at DESC
-        LIMIT ?
-    `).all(limit);
+export async function getAlertHistory(limit = 100) {
+  const history = await db.alertHistory.findMany({
+    orderBy: { created_at: 'desc' },
+    take: parseInt(limit),
+    include: {
+      service: {
+        select: {
+          name: true,
+          url: true
+        }
+      }
+    }
+  });
+
+  return history.map(h => ({
+    ...h,
+    service_name: h.service?.name || null,
+    service_url: h.service?.url || null
+  }));
 }

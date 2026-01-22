@@ -5,24 +5,28 @@ import { authMiddleware } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get upcoming/active maintenances (public)
-router.get('/public', (req, res) => {
+router.get('/public', async (req, res) => {
     try {
-        const maintenances = db.prepare(`
-            SELECT m.*, 
-                GROUP_CONCAT(s.name) as affected_services
-            FROM maintenances m
-            LEFT JOIN maintenance_services ms ON ms.maintenance_id = m.id
-            LEFT JOIN services s ON s.id = ms.service_id
-            WHERE m.end_time > datetime('now')
-            GROUP BY m.id
-            ORDER BY m.start_time ASC
-        `).all();
+        const maintenances = await db.maintenance.findMany({
+            where: {
+                end_time: { gt: new Date() }
+            },
+            orderBy: { start_time: 'asc' },
+            include: {
+                services: {
+                    include: {
+                        service: { select: { name: true } }
+                    }
+                }
+            }
+        });
 
-        for (const maintenance of maintenances) {
-            maintenance.affected_services = maintenance.affected_services ? maintenance.affected_services.split(',') : [];
-        }
+        const formatted = maintenances.map(m => ({
+            ...m,
+            affected_services: m.services.map(s => s.service.name)
+        }));
 
-        res.json(maintenances);
+        res.json(formatted);
     } catch (error) {
         console.error('Error fetching maintenances:', error);
         res.status(500).json({ error: 'Failed to fetch maintenances' });
@@ -30,25 +34,26 @@ router.get('/public', (req, res) => {
 });
 
 // Get all maintenances (admin)
-router.get('/', authMiddleware, (req, res) => {
+router.get('/', authMiddleware, async (req, res) => {
     try {
-        const maintenances = db.prepare(`
-            SELECT m.*, 
-                GROUP_CONCAT(ms.service_id) as service_ids,
-                GROUP_CONCAT(s.name) as affected_services
-            FROM maintenances m
-            LEFT JOIN maintenance_services ms ON ms.maintenance_id = m.id
-            LEFT JOIN services s ON s.id = ms.service_id
-            GROUP BY m.id
-            ORDER BY m.start_time DESC
-        `).all();
+        const maintenances = await db.maintenance.findMany({
+            orderBy: { start_time: 'desc' },
+            include: {
+                services: {
+                    include: {
+                        service: { select: { name: true } }
+                    }
+                }
+            }
+        });
 
-        for (const maintenance of maintenances) {
-            maintenance.service_ids = maintenance.service_ids ? maintenance.service_ids.split(',').map(Number) : [];
-            maintenance.affected_services = maintenance.affected_services ? maintenance.affected_services.split(',') : [];
-        }
+        const formatted = maintenances.map(m => ({
+            ...m,
+            service_ids: m.services.map(s => s.service_id),
+            affected_services: m.services.map(s => s.service.name)
+        }));
 
-        res.json(maintenances);
+        res.json(formatted);
     } catch (error) {
         console.error('Error fetching maintenances:', error);
         res.status(500).json({ error: 'Failed to fetch maintenances' });
@@ -56,7 +61,7 @@ router.get('/', authMiddleware, (req, res) => {
 });
 
 // Create maintenance
-router.post('/', authMiddleware, (req, res) => {
+router.post('/', authMiddleware, async (req, res) => {
     try {
         const { title, description, start_time, end_time, service_ids } = req.body;
 
@@ -64,22 +69,19 @@ router.post('/', authMiddleware, (req, res) => {
             return res.status(400).json({ error: 'Title, start_time, and end_time are required' });
         }
 
-        const result = db.prepare(`
-            INSERT INTO maintenances (title, description, start_time, end_time)
-            VALUES (?, ?, ?, ?)
-        `).run(title, description || '', start_time, end_time);
+        const maintenance = await db.maintenance.create({
+            data: {
+                title,
+                description: description || '',
+                start_time: new Date(start_time),
+                end_time: new Date(end_time),
+                services: service_ids && service_ids.length > 0 ? {
+                    create: service_ids.map(id => ({ service_id: id }))
+                } : undefined
+            },
+            include: { services: true }
+        });
 
-        const maintenanceId = result.lastInsertRowid;
-
-        // Link services
-        if (service_ids && service_ids.length > 0) {
-            const insertService = db.prepare('INSERT INTO maintenance_services (maintenance_id, service_id) VALUES (?, ?)');
-            for (const serviceId of service_ids) {
-                insertService.run(maintenanceId, serviceId);
-            }
-        }
-
-        const maintenance = db.prepare('SELECT * FROM maintenances WHERE id = ?').get(maintenanceId);
         res.status(201).json(maintenance);
     } catch (error) {
         console.error('Error creating maintenance:', error);
@@ -88,30 +90,43 @@ router.post('/', authMiddleware, (req, res) => {
 });
 
 // Update maintenance
-router.put('/:id', authMiddleware, (req, res) => {
+router.put('/:id', authMiddleware, async (req, res) => {
     try {
         const { id } = req.params;
+        const maintenanceId = parseInt(id);
         const { title, description, start_time, end_time, service_ids } = req.body;
 
-        db.prepare(`
-            UPDATE maintenances 
-            SET title = ?, description = ?, start_time = ?, end_time = ?
-            WHERE id = ?
-        `).run(title, description, start_time, end_time, id);
+        const updatedMaintenance = await db.$transaction(async (tx) => {
+            const updated = await tx.maintenance.update({
+                where: { id: maintenanceId },
+                data: {
+                    title,
+                    description,
+                    start_time: start_time ? new Date(start_time) : undefined,
+                    end_time: end_time ? new Date(end_time) : undefined
+                }
+            });
 
-        // Update service links
-        if (service_ids !== undefined) {
-            db.prepare('DELETE FROM maintenance_services WHERE maintenance_id = ?').run(id);
-            if (service_ids.length > 0) {
-                const insertService = db.prepare('INSERT INTO maintenance_services (maintenance_id, service_id) VALUES (?, ?)');
-                for (const serviceId of service_ids) {
-                    insertService.run(id, serviceId);
+            if (service_ids !== undefined) {
+                await tx.maintenanceService.deleteMany({ where: { maintenance_id: maintenanceId } });
+                if (service_ids.length > 0) {
+                    await tx.maintenanceService.createMany({
+                        data: service_ids.map(sid => ({
+                            maintenance_id: maintenanceId,
+                            service_id: sid
+                        }))
+                    });
                 }
             }
-        }
+            return updated;
+        });
 
-        const maintenance = db.prepare('SELECT * FROM maintenances WHERE id = ?').get(id);
-        res.json(maintenance);
+        const finalMaintenance = await db.maintenance.findUnique({
+            where: { id: maintenanceId },
+            include: { services: true }
+        });
+
+        res.json(finalMaintenance);
     } catch (error) {
         console.error('Error updating maintenance:', error);
         res.status(500).json({ error: 'Failed to update maintenance' });
@@ -119,10 +134,9 @@ router.put('/:id', authMiddleware, (req, res) => {
 });
 
 // Delete maintenance
-router.delete('/:id', authMiddleware, (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
     try {
-        const { id } = req.params;
-        db.prepare('DELETE FROM maintenances WHERE id = ?').run(id);
+        await db.maintenance.delete({ where: { id: parseInt(req.params.id) } });
         res.json({ success: true });
     } catch (error) {
         console.error('Error deleting maintenance:', error);

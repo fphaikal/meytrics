@@ -24,6 +24,7 @@ import {
 } from "@heroui/react";
 import { Search, Plus, MoreHorizontal, ChevronDown, FolderOpen, Tags, Globe, Pause, Play, RotateCcw, Trash2, Tag } from 'lucide-react';
 import { toast } from '../../lib/toast';
+import { parseDate } from '../../lib/utils';
 
 import { StatusIndicator } from '../StatusIndicator';
 
@@ -242,11 +243,14 @@ export function ServicesPage() {
     let servicesWithData = 0;
     services.forEach((s: Service) => {
       if (s.uptime_percent) {
-        totalUptime += parseFloat(s.uptime_percent);
-        servicesWithData++;
+        const val = parseFloat(s.uptime_percent);
+        if (!isNaN(val)) {
+          totalUptime += val;
+          servicesWithData++;
+        }
       }
     });
-    const overallUptime = servicesWithData > 0 ? (totalUptime / servicesWithData).toFixed(1) : '0';
+    const overallUptime = servicesWithData > 0 ? (totalUptime / servicesWithData).toFixed(1) : '100.0';
 
     return { upCount, downCount, pausedCount, overallUptime };
   }, [services]);
@@ -291,20 +295,29 @@ export function ServicesPage() {
 
   // Helper to format how long service has been monitored
   const formatMonitoringDuration = (createdAt: string) => {
-    const created = new Date(createdAt);
-    const now = new Date();
-    const diffMs = now.getTime() - created.getTime();
+    try {
+      const created = parseDate(createdAt);
+      if (!created) return '0m';
 
-    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      const now = new Date();
+      const diffMs = now.getTime() - created.getTime();
 
-    const parts = [];
-    if (days > 0) parts.push(`${days}d`);
-    if (hours > 0) parts.push(`${hours}h`);
-    if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+      // Prevent negative duration
+      if (diffMs < 0) return '0m';
 
-    return parts.join(' ');
+      const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+      const parts = [];
+      if (days > 0) parts.push(`${days}d`);
+      if (hours > 0) parts.push(`${hours}h`);
+      if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
+
+      return parts.join(' ');
+    } catch {
+      return '0m';
+    }
   };
 
   // Render uptime bars (last 12 hours, 1 bar per hour)
@@ -322,11 +335,9 @@ export function ServicesPage() {
     }
 
     // Aggregate pings into hour buckets
-    // Database stores UTC without 'Z', so we add 'Z' to parse as UTC
     pings.forEach((ping: Ping) => {
-      // Parse as UTC by appending 'Z' if not already present
-      const timeStr = ping.created_at.endsWith('Z') ? ping.created_at : ping.created_at.replace(' ', 'T') + 'Z';
-      const pingTime = new Date(timeStr);
+      const pingTime = parseDate(ping.created_at);
+      if (!pingTime) return;
 
       for (const hour of hours) {
         if (pingTime >= hour.start && pingTime < hour.end) {
