@@ -17,7 +17,7 @@ import {
 } from "@heroui/react";
 import { ArrowLeft, ExternalLink, Pause, Play, Edit, RefreshCw, Activity, ShieldCheck, Lock, Clock, Calendar, AlertTriangle, CheckCircle, BarChart, Globe, Server, ArrowUp, ArrowDown, Award, FileCode, Link as LinkIcon } from 'lucide-react';
 import { toast } from '../../lib/toast';
-import { cn, parseDate } from '../../lib/utils';
+import { parseDate } from '../../lib/utils';
 import { getServices, getServicePings, getSettings, updateService, getServiceIncidents, getServicePingSummary } from '../../lib/api';
 import type { Service, Ping, ServiceIncident } from '../../lib/types';
 import { StatusIndicator } from '../StatusIndicator';

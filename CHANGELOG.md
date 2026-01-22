@@ -2,6 +2,9 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.1] - 2026-01-22
+- Remove unused cn import from ServiceDetailPage: The 'cn' utility was imported but not used in ServiceDetailPage.tsx. This commit removes the unused import to clean up the code.
+
 ## [1.3.0] - 2026-01-22
 
 ### 🏗️ Architecture
