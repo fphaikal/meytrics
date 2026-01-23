@@ -60,5 +60,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/public/services || exit 1
 
-# Start server
-CMD ["node", "server.js"]
+# Start server (ensure DB schema is aligned first)
+CMD npx prisma db push && node server.js

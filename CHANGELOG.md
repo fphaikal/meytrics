@@ -2,6 +2,12 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.4] - 2026-01-23
+
+### 🐛 Fixes
+- **Docker Database Sync**: Fixed `P2022` (Column not found) errors in Docker by updating the startup command.
+    - Added `npx prisma db push` to the Docker `CMD` to ensure the SQLite schema is automatically synchronized with `schema.prisma` on container startup.
+
 ## [1.3.3] - 2026-01-23
 
 ### 🐛 Fixes
