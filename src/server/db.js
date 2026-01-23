@@ -11,7 +11,14 @@ const defaultDbPath = process.env.DATA_DIR
   ? `file:${path.join(process.env.DATA_DIR, dbFileName)}`
   : `file:${path.join(projectRoot, 'data', dbFileName)}`;
 
-const databaseUrl = process.env.DATABASE_URL || defaultDbPath;
+// Fix: If DATABASE_URL is set to the Prisma CLI friendly path (../data/monitor.db), 
+// resolve it to absolute path for runtime to avoid CWD issues.
+let envUrl = process.env.DATABASE_URL;
+if (envUrl && envUrl.includes('file:../data/monitor.db')) {
+  envUrl = defaultDbPath;
+}
+
+const databaseUrl = envUrl || defaultDbPath;
 
 export const db = new PrismaClient({
   datasources: {

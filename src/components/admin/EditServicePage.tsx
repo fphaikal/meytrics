@@ -12,12 +12,18 @@ import {
   Spinner,
   Slider,
   Chip,
-  Switch
+  Switch,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  useDisclosure
 } from "@heroui/react";
 import { SplitSection } from '../ui/SplitSection';
 import { ArrowLeft, Save, Settings, Activity, Shield, Clock, FileCode, Tag, Plus, Trash2, Globe, Search, Network, Wifi, Database } from 'lucide-react';
 import { toast } from '../../lib/toast';
-import { getServices, getCategories, updateService, getTags, getServiceTags, bulkUpdateTags } from '../../lib/api';
+import { getServices, getCategories, updateService, deleteService, getTags, getServiceTags, bulkUpdateTags } from '../../lib/api';
 import type { Service, ServiceUpdate, Category } from '../../lib/types';
 
 export function EditServicePage() {
@@ -44,6 +50,19 @@ export function EditServicePage() {
     notification_delay: 0
   });
   const [loading, setLoading] = useState(true);
+  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+
+  const handleDeleteService = async () => {
+    try {
+      if (!id) return;
+      await deleteService(parseInt(id));
+      toast.success('Service deleted successfully');
+      navigate('/admin');
+    } catch (error) {
+      console.error('Failed to delete service:', error);
+      toast.error('Failed to delete service');
+    }
+  };
 
   // Fetch service details
   const { data: services } = useQuery({
@@ -754,6 +773,31 @@ export function EditServicePage() {
           </Card>
         </SplitSection>
 
+        {/* Danger Zone */}
+        <SplitSection
+          title="Danger Zone"
+          description="Irreversible actions regarding this service."
+        >
+          <Card className="border-danger-200 bg-danger-50 dark:bg-danger-900/10">
+            <CardBody className="p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div>
+                <h4 className="text-danger-700 dark:text-danger-400 font-medium">Delete Service</h4>
+                <p className="text-danger-500/80 dark:text-danger-400/80 text-small">
+                  Permanently delete this service and all its historical data. This cannot be undone.
+                </p>
+              </div>
+              <Button
+                color="danger"
+                variant="flat"
+                startContent={<Trash2 size={16} />}
+                onPress={onOpen}
+              >
+                Delete Service
+              </Button>
+            </CardBody>
+          </Card>
+        </SplitSection>
+
         {/* Action Buttons */}
         <div className="flex justify-end gap-3">
           <Button
@@ -773,6 +817,30 @@ export function EditServicePage() {
           </Button>
         </div>
       </form>
+
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">Delete Service</ModalHeader>
+              <ModalBody>
+                <p>Are you sure you want to delete this service? This action cannot be undone and will delete all historical ping data, incidents, and configurations.</p>
+              </ModalBody>
+              <ModalFooter>
+                <Button color="default" variant="light" onPress={onClose}>
+                  Cancel
+                </Button>
+                <Button color="danger" onPress={() => {
+                  handleDeleteService();
+                  onClose();
+                }}>
+                  Delete
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </div>
   );
 }

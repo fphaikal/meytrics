@@ -438,7 +438,7 @@ export function ServiceDetailPage() {
                   <TableBody>
                     {incidents.map((incident: ServiceIncident) => {
                       const timezone = settings.timezone || 'Asia/Jakarta';
-                      const startTime = new Date(incident.started_at + 'Z');
+                      const startTime = new Date(incident.started_at);
                       const formatDuration = (seconds: number | null) => {
                         if (!seconds) return 'Ongoing';
                         if (seconds < 60) return `${seconds}s`;

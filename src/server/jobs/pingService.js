@@ -367,6 +367,7 @@ export async function startPingJobs() {
   console.log('🚀 Starting ping jobs...');
 
   // Get all active services
+  // Get all active services
   const services = await db.service.findMany({
     where: { paused: 0 }
   });

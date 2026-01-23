@@ -54,7 +54,7 @@ export function IncidentDetailPage() {
   };
 
   const formatTimeAgo = (dateStr: string) => {
-    const date = new Date(dateStr + 'Z');
+    const date = new Date(dateStr);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -135,7 +135,7 @@ export function IncidentDetailPage() {
               {incident.status === 'down' ? 'Ongoing' : 'Resolved'}
             </Chip>
             <span className="text-sm text-default-500">
-              {new Date(incident.started_at + 'Z').toLocaleString('id-ID', {
+              {new Date(incident.started_at).toLocaleString('id-ID', {
                 timeZone: timezone,
                 dateStyle: 'medium',
                 timeStyle: 'short'
@@ -223,7 +223,7 @@ export function IncidentDetailPage() {
                   <div className="flex items-center justify-between py-2">
                     <span className="text-sm text-default-600">Resolved at</span>
                     <span className="text-sm font-medium text-foreground">
-                      {new Date(incident.ended_at + 'Z').toLocaleString('id-ID', { timeZone: timezone })}
+                      {new Date(incident.ended_at).toLocaleString('id-ID', { timeZone: timezone })}
                     </span>
                   </div>
                 )}
@@ -245,7 +245,7 @@ export function IncidentDetailPage() {
                     <p className="text-sm text-foreground">Incident resolved automatically.</p>
                   </div>
                   <span className="text-xs text-default-500">
-                    {new Date(incident.ended_at + 'Z').toLocaleString('id-ID', {
+                    {new Date(incident.ended_at).toLocaleString('id-ID', {
                       timeZone: timezone,
                       month: 'short',
                       day: 'numeric',
@@ -268,7 +268,7 @@ export function IncidentDetailPage() {
                   )}
                 </div>
                 <span className="text-xs text-default-500">
-                  {new Date(incident.started_at + 'Z').toLocaleString('id-ID', {
+                  {new Date(incident.started_at).toLocaleString('id-ID', {
                     timeZone: timezone,
                     month: 'short',
                     day: 'numeric',
@@ -305,18 +305,23 @@ export function IncidentDetailPage() {
             <CardBody className="p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-foreground">Request.</h3>
-                <Tabs
-                  size="sm"
-                  selectedKey={requestTab}
-                  onSelectionChange={(key) => setRequestTab(key as string)}
-                  classNames={{
-                    tabList: "bg-default-100",
-                    cursor: "bg-background"
-                  }}
-                >
-                  <Tab key="url" title="URL" />
-                  <Tab key="headers" title="Headers" />
-                </Tabs>
+                <div className="tabs-wrapper-force">
+                  <Tabs
+                    size="sm"
+                    variant="underlined"
+                    selectedKey={requestTab}
+                    onSelectionChange={(key) => setRequestTab(key as string)}
+                    classNames={{
+                      tabList: "gap-6 relative rounded-none p-0 border-b border-divider",
+                      cursor: "w-full bg-primary",
+                      tab: "max-w-fit px-0 h-12",
+                      tabContent: "group-data-[selected=true]:text-primary"
+                    }}
+                  >
+                    <Tab key="url" title="URL" />
+                    <Tab key="headers" title="Headers" />
+                  </Tabs>
+                </div>
               </div>
 
               {requestTab === 'url' ? (
@@ -347,18 +352,23 @@ export function IncidentDetailPage() {
             <CardBody className="p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-foreground">Response.</h3>
-                <Tabs
-                  size="sm"
-                  selectedKey={responseTab}
-                  onSelectionChange={(key) => setResponseTab(key as string)}
-                  classNames={{
-                    tabList: "bg-default-100",
-                    cursor: "bg-background"
-                  }}
-                >
-                  <Tab key="body" title="Body" />
-                  <Tab key="headers" title="Headers" />
-                </Tabs>
+                <div className="tabs-wrapper-force">
+                  <Tabs
+                    size="sm"
+                    variant="underlined"
+                    selectedKey={responseTab}
+                    onSelectionChange={(key) => setResponseTab(key as string)}
+                    classNames={{
+                      tabList: "gap-6 relative rounded-none p-0 border-b border-divider",
+                      cursor: "w-full bg-primary",
+                      tab: "max-w-fit px-0 h-12",
+                      tabContent: "group-data-[selected=true]:text-primary"
+                    }}
+                  >
+                    <Tab key="body" title="Body" />
+                    <Tab key="headers" title="Headers" />
+                  </Tabs>
+                </div>
               </div>
 
               {responseTab === 'body' ? (

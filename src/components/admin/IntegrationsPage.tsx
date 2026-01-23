@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { getWebhooks, createWebhook, updateWebhook, deleteWebhook, testWebhook } from '../../lib/api';
+import { getWebhooks, createWebhook, updateWebhook, deleteWebhook, testWebhook, getAlertHistory } from '../../lib/api';
 import {
   Table,
   TableHeader,
@@ -21,12 +21,14 @@ import {
   DropdownMenu,
   DropdownItem,
   Select,
-  SelectItem
+  SelectItem,
+  Tabs,
+  Tab
 } from "@heroui/react";
 import { MoreHorizontal, Pencil, Trash2, Zap, Webhook as WebhookIcon, Send, Hash, MessageSquare } from 'lucide-react';
 import { toast } from '../../lib/toast';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
-import type { Webhook } from '../../lib/types';
+import type { Webhook, AlertHistory } from '../../lib/types';
 
 export function IntegrationsPage() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
@@ -48,6 +50,11 @@ export function IntegrationsPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Alert History state
+  const [history, setHistory] = useState<AlertHistory[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("config");
+
   const fetchWebhooks = async () => {
     try {
       const data = await getWebhooks();
@@ -59,8 +66,21 @@ export function IntegrationsPage() {
     }
   };
 
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const data = await getAlertHistory();
+      setHistory(data);
+    } catch (error) {
+      console.error('Failed to fetch alert history:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchWebhooks();
+    fetchHistory();
   }, []);
 
   const resetForm = () => {
@@ -309,67 +329,147 @@ export function IntegrationsPage() {
         loading={deleting}
       />
 
-      {webhooks.length === 0 ? (
-        <div className="bg-content1 rounded-xl p-8 text-center">
-          <p className="text-default-500">No integrations configured yet.</p>
-        </div>
-      ) : (
-        <Table
-          aria-label="Integrations table"
+      <div className="tabs-wrapper-force w-full mb-6">
+        <Tabs
+          aria-label="Integration options"
+          variant="underlined"
+          selectedKey={activeTab}
+          onSelectionChange={(key) => setActiveTab(key as string)}
           classNames={{
-            wrapper: "bg-background rounded-xl border border-divider",
-            th: "bg-default-100 text-default-600 font-semibold",
-            td: "py-3",
-            tr: "hover:bg-content1 transition-colors"
+            tabList: "gap-6 relative rounded-none p-0 border-b border-divider",
+            cursor: "w-full bg-primary",
+            tab: "max-w-fit px-0 h-12",
+            tabContent: "group-data-[selected=true]:text-primary"
           }}
         >
-          <TableHeader>
-            <TableColumn>NAME</TableColumn>
-            <TableColumn>TYPE</TableColumn>
-            <TableColumn>URL / TARGET</TableColumn>
-            <TableColumn>STATUS</TableColumn>
-            <TableColumn align="center">ACTIONS</TableColumn>
-          </TableHeader>
-          <TableBody>
-            {webhooks.map((w) => (
-              <TableRow key={w.id}>
-                <TableCell className="font-medium">{w.name}</TableCell>
-                <TableCell>
-                  <Chip size="sm" variant="flat" color="primary" className="capitalize">
-                    {w.type || 'Custom'}
-                  </Chip>
-                </TableCell>
-                <TableCell className="text-default-500 text-sm font-mono truncate max-w-xs">{w.url}</TableCell>
-                <TableCell>
-                  <Chip
-                    size="sm"
-                    color={w.enabled ? "success" : "default"}
-                    variant="flat"
-                  >
-                    {w.enabled ? 'Enabled' : 'Disabled'}
-                  </Chip>
-                </TableCell>
-                <TableCell>
-                  <div className="flex justify-center">
-                    <Dropdown>
-                      <DropdownTrigger>
-                        <Button isIconOnly size="sm" variant="light">
-                          <MoreHorizontal className="w-4 h-4 text-default-500" />
-                        </Button>
-                      </DropdownTrigger>
-                      <DropdownMenu aria-label="Integration actions">
-                        <DropdownItem key="test" startContent={<Zap className="w-4 h-4" />} onPress={() => handleTest(w.id)}>Test</DropdownItem>
-                        <DropdownItem key="edit" startContent={<Pencil className="w-4 h-4" />} onPress={() => handleEdit(w)}>Edit</DropdownItem>
-                        <DropdownItem key="delete" startContent={<Trash2 className="w-4 h-4" />} className="text-danger" color="danger" onPress={() => confirmDelete(w.id)}>Delete</DropdownItem>
-                      </DropdownMenu>
-                    </Dropdown>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+          <Tab key="config" title="Configuration">
+            {webhooks.length === 0 ? (
+              <div className="bg-content1 rounded-xl p-8 text-center text-default-500">
+                <p>No integrations configured yet.</p>
+              </div>
+            ) : (
+              <Table
+                aria-label="Integrations table"
+                classNames={{
+                  wrapper: "bg-background rounded-xl border border-divider",
+                  th: "bg-default-100 text-default-600 font-semibold",
+                  td: "py-3",
+                  tr: "hover:bg-content1 transition-colors"
+                }}
+              >
+                <TableHeader>
+                  <TableColumn>NAME</TableColumn>
+                  <TableColumn>TYPE</TableColumn>
+                  <TableColumn>URL / TARGET</TableColumn>
+                  <TableColumn>STATUS</TableColumn>
+                  <TableColumn align="center">ACTIONS</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {webhooks.map((w) => (
+                    <TableRow key={w.id}>
+                      <TableCell className="font-medium">{w.name}</TableCell>
+                      <TableCell>
+                        <Chip size="sm" variant="flat" color="primary" className="capitalize">
+                          {w.type || 'Custom'}
+                        </Chip>
+                      </TableCell>
+                      <TableCell className="text-default-500 text-sm font-mono truncate max-w-xs">{w.url}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="sm"
+                          color={w.enabled ? "success" : "default"}
+                          variant="flat"
+                        >
+                          {w.enabled ? 'Enabled' : 'Disabled'}
+                        </Chip>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-center">
+                          <Dropdown>
+                            <DropdownTrigger>
+                              <Button isIconOnly size="sm" variant="light">
+                                <MoreHorizontal className="w-4 h-4 text-default-500" />
+                              </Button>
+                            </DropdownTrigger>
+                            <DropdownMenu aria-label="Integration actions">
+                              <DropdownItem key="test" startContent={<Zap className="w-4 h-4" />} onPress={() => handleTest(w.id)}>Test</DropdownItem>
+                              <DropdownItem key="edit" startContent={<Pencil className="w-4 h-4" />} onPress={() => handleEdit(w)}>Edit</DropdownItem>
+                              <DropdownItem key="delete" startContent={<Trash2 className="w-4 h-4" />} className="text-danger" color="danger" onPress={() => confirmDelete(w.id)}>Delete</DropdownItem>
+                            </DropdownMenu>
+                          </Dropdown>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Tab>
+          <Tab key="history" title="Alert History">
+            <div className="flex justify-end mb-4">
+              <Button
+                size="sm"
+                variant="flat"
+                onPress={fetchHistory}
+                isLoading={historyLoading}
+                startContent={<Zap className="w-3 h-3" />}
+              >
+                Refresh
+              </Button>
+            </div>
+
+            {history.length === 0 ? (
+              <div className="bg-content1 rounded-xl p-8 text-center text-default-500">
+                <p>No alert history found.</p>
+              </div>
+            ) : (
+              <Table
+                aria-label="Alert history table"
+                classNames={{
+                  wrapper: "bg-background rounded-xl border border-divider",
+                  th: "bg-default-100 text-default-600 font-semibold",
+                  td: "py-3",
+                  tr: "hover:bg-content1 transition-colors"
+                }}
+              >
+                <TableHeader>
+                  <TableColumn>TIME</TableColumn>
+                  <TableColumn>SERVICE</TableColumn>
+                  <TableColumn>TYPE</TableColumn>
+                  <TableColumn>MESSAGE</TableColumn>
+                </TableHeader>
+                <TableBody>
+                  {history.map((h) => (
+                    <TableRow key={h.id}>
+                      <TableCell className="whitespace-nowrap text-default-500">
+                        {new Date(h.created_at).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {h.service_name || 'Unknown Service'}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="sm"
+                          variant="flat"
+                          color={h.type.includes('down') ? 'danger' : 'success'}
+                          className="capitalize"
+                        >
+                          {h.type}
+                        </Chip>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm truncate max-w-md block" title={h.message}>
+                          {h.message}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Tab>
+        </Tabs>
+      </div>
     </div>
   );
 }

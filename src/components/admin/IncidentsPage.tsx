@@ -125,7 +125,7 @@ export function IncidentsPage() {
                 </TableCell>
                 <TableCell>
                   <div className="text-sm text-default-600">
-                    {new Date(incident.started_at + 'Z').toLocaleString('id-ID', { timeZone: timezone })}
+                    {new Date(incident.started_at).toLocaleString('id-ID', { timeZone: timezone })}
                   </div>
                 </TableCell>
                 <TableCell>

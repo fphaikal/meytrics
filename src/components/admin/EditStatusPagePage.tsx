@@ -10,11 +10,17 @@ import {
   CardBody,
   Spinner,
   Textarea,
-  Chip
+  Chip,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  useDisclosure
 } from "@heroui/react";
 import { SplitSection } from '../ui/SplitSection';
 import { ArrowLeft, Save, ExternalLink, X, Plus, Trash2, GripVertical, Globe, Lock } from 'lucide-react';
-import { getStatusPages, updateStatusPage, getServices, getStatusPageServiceIds, updateStatusPageServiceIds, getStatusPageSections, createStatusPageSection, updateStatusPageSection, deleteStatusPageSection, assignServiceToSection, type StatusPageSection } from '../../lib/api';
+import { getStatusPages, updateStatusPage, deleteStatusPage, getServices, getStatusPageServiceIds, updateStatusPageServiceIds, getStatusPageSections, createStatusPageSection, updateStatusPageSection, deleteStatusPageSection, assignServiceToSection, type StatusPageSection } from '../../lib/api';
 import type { StatusPage, Service } from '../../lib/types';
 import {
   DndContext,
@@ -306,6 +312,20 @@ export function EditStatusPagePage() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+
+  const handleDeleteStatusPage = async () => {
+    try {
+      if (!id) return;
+      await deleteStatusPage(parseInt(id));
+      toast.success('Status page deleted successfully');
+      navigate('/admin/status-pages');
+    } catch (error) {
+      console.error('Failed to delete status page:', error);
+      toast.error('Failed to delete status page');
+    }
+  };
+
   // Fetch status pages
   const { data: statusPages } = useQuery({
     queryKey: ['statusPages'],
@@ -405,7 +425,7 @@ export function EditStatusPagePage() {
       }));
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to upload image');
+      toast.error('Failed to upload image');
     }
   };
 
@@ -877,12 +897,7 @@ export function EditStatusPagePage() {
                   color="danger"
                   variant="flat"
                   startContent={<Trash2 size={16} />}
-                  onPress={() => {
-                    if (confirm('Are you sure you want to delete this status page?')) {
-                      // existing delete functionality or placeholder
-                      alert('Delete functionality to be implemented');
-                    }
-                  }}
+                  onPress={onOpen}
                 >
                   Delete Page
                 </Button>
@@ -910,6 +925,30 @@ export function EditStatusPagePage() {
           </div>
         </form>
       )}
+
+      <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">Delete Status Page</ModalHeader>
+              <ModalBody>
+                <p>Are you sure you want to delete this status page? This action cannot be undone and will remove all associated configurations.</p>
+              </ModalBody>
+              <ModalFooter>
+                <Button color="default" variant="light" onPress={onClose}>
+                  Cancel
+                </Button>
+                <Button color="danger" onPress={() => {
+                  handleDeleteStatusPage();
+                  onClose();
+                }}>
+                  Delete
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </div>
   );
 }

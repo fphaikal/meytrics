@@ -58,21 +58,21 @@ router.get('/:serviceId/aggregated', async (req, res) => {
             groupByFormat = '%Y-%m-%d %H:00:00';
         }
 
-        // Convert JS Date to ISO string for SQLite
-        const isoStart = startDate.toISOString();
+        // Convert JS Date to timestamp for SQLite comparison (stored as INTEGER/REAL ms)
+        const startTimestamp = startDate.getTime();
 
         // Use Prisma Raw Query for SQLite Aggregation
-        // Note: SQLite dates are stored as strings usually in Prisma default
+        // SQLite dates are stored as INTEGER (milliseconds) in this DB
         const result = await db.$queryRaw`
             SELECT 
-                strftime(${groupByFormat}, created_at) as time_bucket,
+                strftime(${groupByFormat}, created_at / 1000, 'unixepoch') as time_bucket,
                 AVG(response_time) as avg_resp,
                 MIN(response_time) as min_resp,
                 MAX(response_time) as max_resp,
                 COUNT(*) as count
             FROM pings 
             WHERE service_id = ${id} 
-              AND created_at >= ${isoStart}
+              AND created_at >= ${startTimestamp}
               AND status = 'up'
               AND response_time IS NOT NULL
             GROUP BY time_bucket
@@ -82,9 +82,9 @@ router.get('/:serviceId/aggregated', async (req, res) => {
         // Format for frontend
         const formatted = result.map(r => ({
             created_at: r.time_bucket, // already formatted string
-            response_time: r.avg_resp,
-            min_response_time: r.min_resp,
-            max_response_time: r.max_resp,
+            response_time: Number(r.avg_resp),
+            min_response_time: Number(r.min_resp),
+            max_response_time: Number(r.max_resp),
             status: 'up',
             ping_count: Number(r.count) // BigInt support
         }));

@@ -4,9 +4,9 @@ import { getAllWebhooks, createWebhook, updateWebhook, deleteWebhook, testWebhoo
 const router = express.Router();
 
 // Get all webhooks
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const webhooks = getAllWebhooks();
+    const webhooks = await getAllWebhooks();
     // Parse JSON fields for response
     const parsed = webhooks.map(w => ({
       ...w,
@@ -22,7 +22,7 @@ router.get('/', (req, res) => {
 });
 
 // Create webhook
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name, url, type, events, headers, enabled } = req.body;
 
@@ -30,7 +30,7 @@ router.post('/', (req, res) => {
       return res.status(400).json({ error: 'Name and URL are required' });
     }
 
-    const webhook = createWebhook({ name, url, type, events, headers, enabled });
+    const webhook = await createWebhook({ name, url, type, events, headers, enabled });
     res.status(201).json({
       ...webhook,
       events: JSON.parse(webhook.events || '[]'),
@@ -44,10 +44,10 @@ router.post('/', (req, res) => {
 });
 
 // Update webhook
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const webhook = updateWebhook(parseInt(id), req.body);
+    const webhook = await updateWebhook(parseInt(id), req.body);
 
     if (!webhook) {
       return res.status(404).json({ error: 'Webhook not found' });
@@ -66,10 +66,10 @@ router.put('/:id', (req, res) => {
 });
 
 // Delete webhook
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    deleteWebhook(parseInt(id));
+    await deleteWebhook(parseInt(id));
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting webhook:', error);
@@ -90,10 +90,10 @@ router.post('/:id/test', async (req, res) => {
 });
 
 // Get alert history
-router.get('/history', (req, res) => {
+router.get('/history', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 100;
-    const history = getAlertHistory(limit);
+    const history = await getAlertHistory(limit);
     res.json(history);
   } catch (error) {
     console.error('Error fetching alert history:', error);
