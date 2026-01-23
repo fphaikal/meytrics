@@ -2,6 +2,12 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.41] - 2026-01-23
+
+### 🐛 Hotfix
+- **Prisma Version Pinning**: Fixed `P1012` error ("datasource property url is no longer supported") caused by Docker using the latest Prisma CLI (v7.x) instead of the local version (v5.22.0).
+    - Moved `prisma` and `@prisma/client` from `devDependencies` to `dependencies` in `package.json` to ensure the correct CLI version is installed in the production container.
+
 ## [1.3.4] - 2026-01-23
 
 ### 🐛 Fixes
