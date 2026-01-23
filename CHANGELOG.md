@@ -2,6 +2,10 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.43] - 2026-01-23
+
+- Added automatic seeding of default admin user (`admin` / `admin123`) if the users table is empty. This ensures a login is available for fresh Docker installations.
+
 ## [1.3.42] - 2026-01-23
 
 ### 🔧 Configuration

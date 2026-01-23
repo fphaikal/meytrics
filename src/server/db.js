@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +35,22 @@ export async function initDatabase() {
   try {
     await db.$connect();
     console.log('✅ Database connected successfully');
+
+    // Check if any users exist, if not create default admin
+    const userCount = await db.user.count();
+    if (userCount === 0) {
+      console.log('👤 No users found. Creating default admin user...');
+      const hashedPassword = bcrypt.hashSync('admin123', 10);
+
+      await db.user.create({
+        data: {
+          username: 'admin',
+          password: hashedPassword,
+          role: 'admin'
+        }
+      });
+      console.log('✅ Default admin user created: admin / admin123');
+    }
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
     process.exit(1);
