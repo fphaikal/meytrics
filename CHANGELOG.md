@@ -2,6 +2,12 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.42] - 2026-01-23
+
+### 🔧 Configuration
+- **Database Naming**: Standardized default SQLite database filename to `meytrics.db` (previously `monitor.db`) across Docker and application code.
+- **Docker Environment**: Explicitly set `DATABASE_URL` in `Dockerfile` (for both build and production stages) to ensure Prisma CLI commands function correctly without manual configuration.
+
 ## [1.3.41] - 2026-01-23
 
 ### 🐛 Hotfix

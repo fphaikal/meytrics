@@ -12,6 +12,7 @@ RUN apk add --no-cache openssl
 RUN npm install --legacy-peer-deps
 
 # Generate Prisma Client
+ENV DATABASE_URL="file:./meytrics.db"
 RUN npx prisma generate
 
 # Copy source code
@@ -50,8 +51,9 @@ RUN mkdir -p /data
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATA_DIR=/data
-# We do NOT set DATABASE_URL here effectively because we rely on db.js fallback or runtime injection
-# But db.js uses DATA_DIR to default to /data/monitor.db, which is what we want.
+ENV DATABASE_URL="file:/data/meytrics.db"
+# We now set default DATABASE_URL so 'prisma db push' works in the CMD.
+# db.js will also use this if not overridden.
 
 # Expose port
 EXPOSE 3000

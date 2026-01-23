@@ -6,15 +6,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '../../');
 
-const dbFileName = 'monitor.db';
+const dbFileName = 'meytrics.db';
 const defaultDbPath = process.env.DATA_DIR
   ? `file:${path.join(process.env.DATA_DIR, dbFileName)}`
   : `file:${path.join(projectRoot, 'data', dbFileName)}`;
 
-// Fix: If DATABASE_URL is set to the Prisma CLI friendly path (../data/monitor.db), 
+// Fix: If DATABASE_URL is set to the Prisma CLI friendly path (../data/meytrics.db), 
 // resolve it to absolute path for runtime to avoid CWD issues.
 let envUrl = process.env.DATABASE_URL;
-if (envUrl && envUrl.includes('file:../data/monitor.db')) {
+if (envUrl && envUrl.includes('file:../data/meytrics.db')) {
   envUrl = defaultDbPath;
 }
 
