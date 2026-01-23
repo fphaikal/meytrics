@@ -8,6 +8,7 @@ COPY package.json bun.lock* ./
 COPY prisma ./prisma/
 
 # Install dependencies (including devDeps for prisma CLI)
+RUN apk add --no-cache openssl
 RUN npm install --legacy-peer-deps
 
 # Generate Prisma Client
@@ -26,6 +27,7 @@ WORKDIR /app
 
 # Install production dependencies only
 COPY package.json ./
+RUN apk add --no-cache openssl
 RUN npm install --omit=dev --legacy-peer-deps
 
 # Copy generated Prisma Client from builder

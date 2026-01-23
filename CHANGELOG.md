@@ -2,6 +2,20 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.3] - 2026-01-23
+
+### 🐛 Fixes
+- **Docker Compatibility**: Fixed `libssl/openssl` version mismatch error in Docker environment.
+    - Updated `prisma/schema.prisma` binary targets to include `linux-musl-openssl-3.0.x` (matching `node:20-alpine`).
+    - Updated `Dockerfile` to expressly install `openssl` via `apk` in both build and production stages.
+
+## [1.3.2] - 2026-01-23
+
+### 🐛 Fixes
+- **Tabs Component**: Fixed persistent UI bug where scroll/navigation arrows would appear on `Tabs` components (Incident Detail & Integrations pages) even when content fit the screen.
+    - Updated Tabs variant to `underlined`.
+    - Applied specific CSS overrides to hide native scrollbars and library-generated scroll buttons.
+
 ## [1.3.1] - 2026-01-22
 - Remove unused cn import from ServiceDetailPage: The 'cn' utility was imported but not used in ServiceDetailPage.tsx. This commit removes the unused import to clean up the code.
 
