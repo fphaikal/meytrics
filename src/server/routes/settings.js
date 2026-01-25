@@ -79,13 +79,13 @@ router.get('/public', async (req, res) => {
 router.post('/test-smtp', async (req, res) => {
     try {
         const { sendTestEmail } = await import('../services/emailService.js');
-        const { email } = req.body;
+        const { email, config } = req.body;
 
         if (!email) {
             return res.status(400).json({ error: 'Email is required' });
         }
 
-        await sendTestEmail(email);
+        await sendTestEmail(email, config);
         res.json({ message: 'Test email sent successfully' });
     } catch (error) {
         console.error('Test SMTP error:', error);

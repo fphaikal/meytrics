@@ -108,6 +108,10 @@ model Service {
   auth_pass              String?
   notification_repeat    Int?                 @default(0)
   notification_delay     Int?                 @default(0)
+  notify_ssl_expiry      Int?                 @default(0)
+  notify_domain_expiry   Int?                 @default(0)
+  ssl_expiry_threshold   String?              @default("7")
+  domain_expiry_threshold String?              @default("14")
   keyword                String?
   keyword_condition      String?              @default("exists")
   keyword_case_sensitive Int?                 @default(0)

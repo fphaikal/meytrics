@@ -155,7 +155,8 @@
 }
 
 /* Fallback: Hide any button that is not a tab, just in case */
-.tabs-wrapper-force button:not([role="tab"]) {
+/* Fallback: Hide any button that is not a tab, just in case, but ONLY within the tab list */
+.tabs-wrapper-force [data-slot="tab-list"] button:not([role="tab"]) {
   display: none !important;
 }
 
@@ -163,4 +164,16 @@
 .tabs-wrapper-force [data-slot="base"],
 .tabs-wrapper-force [data-slot="tab-list"] {
   overflow: visible !important;
+}
+
+/* Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type=number] {
+  -moz-appearance: textfield;
 }

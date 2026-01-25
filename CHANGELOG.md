@@ -2,6 +2,12 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.5] - 2026-01-25
+### ✨ Improvements
+- **Incident Synchronization**: Implemented bidirectional sync between service monitoring and public status pages. Automated downtimes now reliably create and resolve `Incidents`, ensuring the public dashboard reflects real-time system health without manual intervention.
+- **Integrations UX**: Streamlined the management interface by replacing the actions dropdown with direct **Test**, **Edit**, and **Delete** buttons, significantly reducing click-depth for common operations.
+- **Unified Notifications**: Refactored **SMTP Configuration** into the central **Integrations** system. Email alerts are now treated as a first-class citizen alongside Webhooks (Slack/Discord), unifying the configuration flow and removing legacy segregated settings.
+
 ## [1.3.43] - 2026-01-23
 
 - Added automatic seeding of default admin user (`admin` / `admin123`) if the users table is empty. This ensures a login is available for fresh Docker installations.

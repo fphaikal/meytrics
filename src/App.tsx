@@ -19,7 +19,7 @@ const PageLoader = () => (
 export function App() {
   return (
     <BrowserRouter>
-      <ToastProvider placement="top-right" />
+      <ToastProvider placement="top-center" />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<HomePage />} />

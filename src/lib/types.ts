@@ -35,6 +35,10 @@ export interface Service {
     auth_pass?: string;
     notification_repeat?: number;
     notification_delay?: number;
+    notify_ssl_expiry?: boolean;
+    notify_domain_expiry?: boolean;
+    ssl_expiry_threshold?: string;
+    domain_expiry_threshold?: string;
     created_at: string;
 }
 
@@ -168,7 +172,7 @@ export interface Webhook {
     id: number;
     name: string;
     url: string;
-    type: 'discord' | 'slack' | 'custom';
+    type: 'discord' | 'slack' | 'custom' | 'telegram' | 'smtp';
     events: string[];
     headers: Record<string, string>;
     config?: any;
@@ -272,5 +276,9 @@ export interface ServiceUpdate {
     auth_pass?: string;
     notification_repeat?: number;
     notification_delay?: number;
+    notify_ssl_expiry?: boolean;
+    notify_domain_expiry?: boolean;
+    ssl_expiry_threshold?: string;
+    domain_expiry_threshold?: string;
 }
 

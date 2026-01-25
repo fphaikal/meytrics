@@ -115,8 +115,8 @@ export const getSettings = () => fetchAPI('/api/settings');
 export const updateSettings = (data: Record<string, string>) =>
     fetchAPI('/api/settings', { method: 'PUT', body: JSON.stringify(data) });
 export const getPublicSettings = () => fetchAPI('/api/settings/public');
-export const testSmtp = (email: string) =>
-    fetchAPI('/api/settings/test-smtp', { method: 'POST', body: JSON.stringify({ email }) });
+export const testSmtp = (email: string, config?: Record<string, string>) =>
+    fetchAPI('/api/settings/test-smtp', { method: 'POST', body: JSON.stringify({ email, config }) });
 
 // Categories
 export const getPublicCategories = () => fetchAPI('/api/public/categories/public');

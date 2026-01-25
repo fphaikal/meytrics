@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { getSettings, updateSettings, testSmtp, changePassword } from '../../lib/api';
+import { getSettings, updateSettings, changePassword } from '../../lib/api';
 import type { Settings } from '../../lib/types';
 import {
   Button,
@@ -11,15 +11,14 @@ import {
 } from "@heroui/react";
 import { toast } from '../../lib/toast';
 import { SplitSection } from '../ui/SplitSection';
-import { Shield, Database, Settings2, Mail } from 'lucide-react';
+import { Shield, Database, Settings2 } from 'lucide-react';
 
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<Partial<Settings>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [testEmail, setTestEmail] = useState('');
-  const [testingSmtp, setTestingSmtp] = useState(false);
+
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -49,21 +48,7 @@ export function SettingsPage() {
     }
   };
 
-  const handleTestSmtp = async () => {
-    if (!testEmail) {
-      toast.error('Please enter a test email address');
-      return;
-    }
-    setTestingSmtp(true);
-    try {
-      await testSmtp(testEmail);
-      toast.success('Test email sent successfully');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to send test email');
-    } finally {
-      setTestingSmtp(false);
-    }
-  };
+
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
@@ -277,92 +262,7 @@ export function SettingsPage() {
           </Card>
         </SplitSection>
 
-        {/* SMTP Settings */}
-        <SplitSection
-          title="Email Notifications (SMTP)"
-          description="Configure SMTP settings to enable email alerts."
-          icon={<Mail className="w-5 h-5 text-primary" />}
-        >
-          <Card>
-            <CardBody className="gap-4 p-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="SMTP Host"
-                  placeholder="smtp.gmail.com"
-                  labelPlacement="outside"
-                  value={settings.smtp_host || ''}
-                  onValueChange={(value) => setSettings({ ...settings, smtp_host: value })}
-                />
-                <Input
-                  label="SMTP Port"
-                  placeholder="587"
-                  labelPlacement="outside"
-                  value={settings.smtp_port || ''}
-                  onValueChange={(value) => setSettings({ ...settings, smtp_port: value })}
-                />
-              </div>
-              <Input
-                label="SMTP Username"
-                placeholder="your@gmail.com"
-                labelPlacement="outside"
-                value={settings.smtp_user || ''}
-                onValueChange={(value) => setSettings({ ...settings, smtp_user: value })}
-              />
-              <Input
-                label="SMTP Password"
-                placeholder="App password"
-                type="password"
-                labelPlacement="outside"
-                value={settings.smtp_pass || ''}
-                onValueChange={(value) => setSettings({ ...settings, smtp_pass: value })}
-                description="For Gmail, use an App Password"
-              />
-              <Input
-                label="From Email"
-                placeholder="noreply@yourdomain.com"
-                type="email"
-                labelPlacement="outside"
-                value={settings.smtp_from || ''}
-                onValueChange={(value) => setSettings({ ...settings, smtp_from: value })}
-              />
-              <Input
-                label="From Name"
-                placeholder="MEYTRICS Alerts"
-                labelPlacement="outside"
-                value={settings.smtp_from_name || ''}
-                onValueChange={(value) => setSettings({ ...settings, smtp_from_name: value })}
-              />
-              <Input
-                label="Notification Emails"
-                placeholder="admin@example.com, team@example.com"
-                value={settings.notification_emails || ''}
-                labelPlacement="outside"
-                onValueChange={(value) => setSettings({ ...settings, notification_emails: value })}
-                description="Comma-separated list of email addresses"
-              />
-              <div className="flex gap-2 pt-2 items-end">
-                <Input
-                  label="Test Email"
-                  placeholder="Test email address"
-                  type="email"
-                  labelPlacement="outside"
-                  value={testEmail}
-                  onValueChange={setTestEmail}
-                  className="flex-1"
-                />
-                <Button
-                  onPress={handleTestSmtp}
-                  disabled={testingSmtp}
-                  isLoading={testingSmtp}
-                  color="secondary"
-                  className="mb-0.5"
-                >
-                  Test SMTP
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
-        </SplitSection>
+
 
         <div className="flex justify-end pt-4">
           <Button

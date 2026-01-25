@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { getWebhooks, createWebhook, updateWebhook, deleteWebhook, testWebhook, getAlertHistory } from '../../lib/api';
+import { getWebhooks, createWebhook, updateWebhook, deleteWebhook, testWebhook, getAlertHistory, getSettings, updateSettings, testSmtp } from '../../lib/api';
 import {
   Table,
   TableHeader,
@@ -12,23 +12,26 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
+
   Button,
   Input,
   Checkbox,
   Chip,
-  Dropdown,
-  DropdownTrigger,
-  DropdownMenu,
-  DropdownItem,
+
   Select,
   SelectItem,
   Tabs,
-  Tab
+  Tab,
+  Dropdown,
+  DropdownTrigger,
+  DropdownMenu,
+  DropdownItem
 } from "@heroui/react";
-import { MoreHorizontal, Pencil, Trash2, Zap, Webhook as WebhookIcon, Send, Hash, MessageSquare } from 'lucide-react';
+import { Pencil, Trash2, Zap, Webhook as WebhookIcon, Send, Hash, MessageSquare, Mail, MoreHorizontal } from 'lucide-react';
 import { toast } from '../../lib/toast';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
-import type { Webhook, AlertHistory } from '../../lib/types';
+
+import type { Webhook, AlertHistory, Settings } from '../../lib/types';
 
 export function IntegrationsPage() {
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
@@ -53,12 +56,51 @@ export function IntegrationsPage() {
   // Alert History state
   const [history, setHistory] = useState<AlertHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // SMTP State
+  const [settings, setSettings] = useState<Partial<Settings>>({});
+  const [testEmail, setTestEmail] = useState('');
+  const [testingSmtp, setTestingSmtp] = useState(false);
+
+  // We no longer need separate tabs or complex state for SMTP, it will be integrated into the table/modal
   const [activeTab, setActiveTab] = useState("config");
+
+  // SMTP State
+
 
   const fetchWebhooks = async () => {
     try {
-      const data = await getWebhooks();
-      setWebhooks(data);
+      const [webhooksData, settingsData] = await Promise.all([
+        getWebhooks(),
+        getSettings()
+      ]);
+      setSettings(settingsData);
+
+      // Only show SMTP in table if it is actually configured (has a host)
+      if (settingsData.smtp_host) {
+        const smtpIntegration: Webhook = {
+          id: -1,
+          name: 'Email Notifications (SMTP)',
+          type: 'smtp' as any,
+          url: settingsData.notification_emails || 'No recipients configured',
+          events: ['status_change', 'incident_created', 'incident_resolved', 'maintenance_scheduled'],
+          enabled: true,
+          created_at: new Date().toISOString(),
+          headers: {},
+          config: {
+            smtp_host: settingsData.smtp_host,
+            smtp_port: settingsData.smtp_port,
+            smtp_user: settingsData.smtp_user,
+            smtp_pass: settingsData.smtp_pass,
+            smtp_from: settingsData.smtp_from,
+            smtp_from_name: settingsData.smtp_from_name,
+            notification_emails: settingsData.notification_emails
+          }
+        };
+        setWebhooks([...webhooksData, smtpIntegration]);
+      } else {
+        setWebhooks(webhooksData);
+      }
     } catch (error) {
       console.error('Failed to fetch integrations:', error);
     } finally {
@@ -83,6 +125,24 @@ export function IntegrationsPage() {
     fetchHistory();
   }, []);
 
+  // Remove separate fetchSettings and handleSmtpSubmit as they are now integrated
+
+  const handleTestSmtp = async () => {
+    if (!testEmail) {
+      toast.error('Please enter a test email address');
+      return;
+    }
+    setTestingSmtp(true);
+    try {
+      await testSmtp(testEmail, settings as Record<string, string>);
+      toast.success('Test email sent successfully');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to send test email');
+    } finally {
+      setTestingSmtp(false);
+    }
+  };
+
   const resetForm = () => {
     setFormData({
       name: '', url: '', events: ['status_change'], enabled: true, type: 'custom',
@@ -94,22 +154,38 @@ export function IntegrationsPage() {
   const handleEdit = (webhook: Webhook) => {
     setEditingWebhook(webhook);
 
-    let config: any = {};
-    if (webhook.config) {
-      try {
-        config = typeof webhook.config === 'string' ? JSON.parse(webhook.config) : webhook.config;
-      } catch (e) { console.error("Error parsing config", e); }
-    }
+    if (webhook.type === 'smtp') {
+      // Load SMTP settings into settings state for the modal
+      // We don't map to formData exactly because the structure is different
+      // but we need to set the type in formData to switch the modal view
+      setFormData({
+        name: webhook.name,
+        url: webhook.url,
+        events: webhook.events,
+        enabled: webhook.enabled,
+        type: 'smtp',
+        telegram_bot_token: '',
+        telegram_chat_id: ''
+      });
+      // Ensure local settings state is up to date (it should be from fetch)
+    } else {
+      let config: any = {};
+      if (webhook.config) {
+        try {
+          config = typeof webhook.config === 'string' ? JSON.parse(webhook.config) : webhook.config;
+        } catch (e) { console.error("Error parsing config", e); }
+      }
 
-    setFormData({
-      name: webhook.name,
-      url: webhook.url,
-      events: webhook.events || ['status_change'],
-      enabled: webhook.enabled,
-      type: webhook.type || 'custom',
-      telegram_bot_token: config.telegram_bot_token || '',
-      telegram_chat_id: config.telegram_chat_id || ''
-    });
+      setFormData({
+        name: webhook.name,
+        url: webhook.url,
+        events: webhook.events || ['status_change'],
+        enabled: webhook.enabled,
+        type: webhook.type || 'custom',
+        telegram_bot_token: config.telegram_bot_token || '',
+        telegram_chat_id: config.telegram_chat_id || ''
+      });
+    }
     setShowForm(true);
   };
 
@@ -117,32 +193,38 @@ export function IntegrationsPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const dataToSubmit: any = {
-        name: formData.name,
-        events: formData.events,
-        enabled: formData.enabled,
-        type: formData.type,
-        config: {}
-      };
-
-      if (formData.type === 'telegram') {
-        dataToSubmit.url = `https://api.telegram.org/bot${formData.telegram_bot_token}/sendMessage`;
-        dataToSubmit.config = {
-          telegram_bot_token: formData.telegram_bot_token,
-          telegram_chat_id: formData.telegram_chat_id
+      if (formData.type === 'smtp') {
+        // Special handling for SMTP
+        await updateSettings(settings as Record<string, string>);
+        toast.success('SMTP settings saved successfully');
+      } else {
+        const dataToSubmit: any = {
+          name: formData.name,
+          events: formData.events,
+          enabled: formData.enabled,
+          type: formData.type,
+          config: {}
         };
-      } else {
-        dataToSubmit.url = formData.url;
-      }
 
-      if (editingWebhook) {
-        await updateWebhook(editingWebhook.id, dataToSubmit);
-      } else {
-        await createWebhook(dataToSubmit);
+        if (formData.type === 'telegram') {
+          dataToSubmit.url = `https://api.telegram.org/bot${formData.telegram_bot_token}/sendMessage`;
+          dataToSubmit.config = {
+            telegram_bot_token: formData.telegram_bot_token,
+            telegram_chat_id: formData.telegram_chat_id
+          };
+        } else {
+          dataToSubmit.url = formData.url;
+        }
+
+        if (editingWebhook && editingWebhook.id !== -1) {
+          await updateWebhook(editingWebhook.id, dataToSubmit);
+        } else {
+          await createWebhook(dataToSubmit);
+        }
       }
       setShowForm(false);
       resetForm();
-      fetchWebhooks();
+      fetchWebhooks(); // Reloads both standard webhooks and the synthetic SMTP one
       toast.success(editingWebhook ? 'Integration updated successfully' : 'Integration created successfully');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to save integration');
@@ -159,9 +241,25 @@ export function IntegrationsPage() {
     if (!deleteId) return;
     setDeleting(true);
     try {
-      await deleteWebhook(deleteId);
+      if (deleteId === -1) {
+        // Special handling for SMTP "delete" - maybe just clear the settings?
+        // For now let's just clear the notification emails and enabled-like fields?
+        // Or honestly, just don't allow "delete" from the UI if it's weird, but user asked for it.
+        // Let's clear the host/user/pass fields to "disable" it.
+        await updateSettings({
+          smtp_host: '',
+          smtp_port: '',
+          smtp_user: '',
+          smtp_pass: '',
+          smtp_from: '',
+          notification_emails: ''
+        });
+        toast.success('SMTP settings cleared');
+      } else {
+        await deleteWebhook(deleteId);
+        toast.success('Integration deleted successfully');
+      }
       fetchWebhooks();
-      toast.success('Integration deleted successfully');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete integration');
     } finally {
@@ -172,7 +270,20 @@ export function IntegrationsPage() {
 
   const handleTest = async (id: number) => {
     try {
-      await testWebhook(id);
+      if (id === -1) {
+        // Test SMTP
+        // We need a target email. If settings.notification_emails is set, use the first one.
+        // Or prompt user? For quick test button, maybe use notification_emails.
+        const emails = settings.notification_emails?.split(',');
+        const target = emails && emails.length > 0 ? emails[0].trim() : '';
+        if (!target) {
+          toast.error('Configure notification emails to test SMTP');
+          return;
+        }
+        await testSmtp(target, settings as Record<string, string>);
+      } else {
+        await testWebhook(id);
+      }
       toast.success('Test integration sent successfully');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to test integration');
@@ -226,6 +337,7 @@ export function IntegrationsPage() {
                     <SelectItem key="telegram" startContent={<Send className="w-4 h-4" />}>Telegram</SelectItem>
                     <SelectItem key="slack" startContent={<Hash className="w-4 h-4" />}>Slack</SelectItem>
                     <SelectItem key="discord" startContent={<MessageSquare className="w-4 h-4" />}>Discord</SelectItem>
+                    <SelectItem key="smtp" startContent={<Mail className="w-4 h-4" />}>Email (SMTP)</SelectItem>
                   </Select>
 
                   <Input
@@ -237,7 +349,85 @@ export function IntegrationsPage() {
                     isRequired
                   />
 
-                  {formData.type === 'telegram' ? (
+                  {formData.type === 'smtp' ? (
+                    <div className="flex flex-col gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Input
+                          label="SMTP Host"
+                          placeholder="smtp.gmail.com"
+                          labelPlacement="outside"
+                          value={settings.smtp_host || ''}
+                          onValueChange={(value) => setSettings({ ...settings, smtp_host: value })}
+                        />
+                        <Input
+                          label="SMTP Port"
+                          placeholder="587"
+                          labelPlacement="outside"
+                          value={settings.smtp_port || ''}
+                          onValueChange={(value) => setSettings({ ...settings, smtp_port: value })}
+                        />
+                      </div>
+                      <Input
+                        label="SMTP Username"
+                        placeholder="your@gmail.com"
+                        labelPlacement="outside"
+                        value={settings.smtp_user || ''}
+                        onValueChange={(value) => setSettings({ ...settings, smtp_user: value })}
+                      />
+                      <Input
+                        label="SMTP Password"
+                        placeholder="App password"
+                        type="password"
+                        labelPlacement="outside"
+                        value={settings.smtp_pass || ''}
+                        onValueChange={(value) => setSettings({ ...settings, smtp_pass: value })}
+                        description="For Gmail, use an App Password"
+                      />
+                      <Input
+                        label="From Email"
+                        placeholder="noreply@yourdomain.com"
+                        type="email"
+                        labelPlacement="outside"
+                        value={settings.smtp_from || ''}
+                        onValueChange={(value) => setSettings({ ...settings, smtp_from: value })}
+                      />
+                      <Input
+                        label="From Name"
+                        placeholder="MEYTRICS Alerts"
+                        labelPlacement="outside"
+                        value={settings.smtp_from_name || ''}
+                        onValueChange={(value) => setSettings({ ...settings, smtp_from_name: value })}
+                      />
+                      <Input
+                        label="Notification Emails"
+                        placeholder="admin@example.com, team@example.com"
+                        value={settings.notification_emails || ''}
+                        labelPlacement="outside"
+                        onValueChange={(value) => setSettings({ ...settings, notification_emails: value })}
+                        description="Comma-separated list of email addresses"
+                      />
+                      <div className="flex gap-2 pt-2 items-end">
+                        <Input
+                          label="Test Email"
+                          placeholder="Test email address"
+                          type="email"
+                          labelPlacement="outside"
+                          value={testEmail}
+                          onValueChange={setTestEmail}
+                          className="flex-1"
+                        />
+                        <Button
+                          onPress={handleTestSmtp}
+                          disabled={testingSmtp}
+                          isLoading={testingSmtp}
+                          color="secondary"
+                          className="mb-0.5"
+                        >
+                          Test SMTP
+                        </Button>
+                      </div>
+                    </div>
+                  ) : formData.type === 'telegram' ? (
                     <>
                       <Input
                         label="Bot Token"
@@ -285,30 +475,34 @@ export function IntegrationsPage() {
                     />
                   )}
 
-                  <div>
-                    <label className="block text-small font-medium text-foreground pb-2">Trigger Events</label>
-                    <div className="flex flex-wrap gap-2">
-                      {['status_change', 'incident_created', 'incident_resolved', 'maintenance_scheduled'].map(event => (
-                        <Button
-                          key={event}
-                          size="sm"
-                          variant={formData.events.includes(event) ? "solid" : "bordered"}
-                          color={formData.events.includes(event) ? "primary" : "default"}
-                          onPress={() => toggleEvent(event)}
+                  {formData.type !== 'smtp' && (
+                    <>
+                      <div>
+                        <label className="block text-small font-medium text-foreground pb-2">Trigger Events</label>
+                        <div className="flex flex-wrap gap-2">
+                          {['status_change', 'incident_created', 'incident_resolved', 'maintenance_scheduled'].map(event => (
+                            <Button
+                              key={event}
+                              size="sm"
+                              variant={formData.events.includes(event) ? "solid" : "bordered"}
+                              color={formData.events.includes(event) ? "primary" : "default"}
+                              onPress={() => toggleEvent(event)}
+                            >
+                              {event.replace('_', ' ')}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          isSelected={formData.enabled}
+                          onValueChange={(checked) => setFormData({ ...formData, enabled: checked })}
                         >
-                          {event.replace('_', ' ')}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      isSelected={formData.enabled}
-                      onValueChange={(checked) => setFormData({ ...formData, enabled: checked })}
-                    >
-                      Enabled
-                    </Checkbox>
-                  </div>
+                          Enabled
+                        </Checkbox>
+                      </div>
+                    </>
+                  )}
                 </form>
               </ModalBody>
               <ModalFooter>
@@ -468,6 +662,7 @@ export function IntegrationsPage() {
               </Table>
             )}
           </Tab>
+
         </Tabs>
       </div>
     </div>

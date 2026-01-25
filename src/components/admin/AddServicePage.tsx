@@ -14,10 +14,63 @@ import {
   Switch
 } from "@heroui/react";
 import { SplitSection } from '../ui/SplitSection';
-import { ArrowLeft, Plus, Settings, Activity, Shield, Clock, FileCode, Tag, Trash2, Globe, Search, Network, Wifi, Database } from 'lucide-react';
+import { ArrowLeft, Plus, Settings, Activity, Shield, Clock, FileCode, Tag, Trash2, Globe, Search, Network, Wifi, Database, TriangleAlert } from 'lucide-react';
 import { toast } from '../../lib/toast';
-import { getCategories, createService, getTags, bulkUpdateTags } from '../../lib/api';
+import { getCategories, createService, getTags, bulkUpdateTags, getWebhooks, getSettings } from '../../lib/api';
 import type { ServiceUpdate, Category } from '../../lib/types';
+
+const ThresholdInput = ({ value, onChange, isDisabled }: { value: string, onChange: (v: string) => void, isDisabled: boolean }) => {
+  const [inputValue, setInputValue] = useState('');
+
+  const values = value ? value.split(',').map(v => v.trim()).filter(Boolean) : [];
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const newVal = inputValue.trim();
+      if (newVal && !values.includes(newVal) && /^\d+$/.test(newVal)) {
+        onChange([...values, newVal].join(', '));
+        setInputValue('');
+      }
+    } else if (e.key === 'Backspace' && !inputValue && values.length > 0) {
+      onChange(values.slice(0, -1).join(', '));
+    }
+  };
+
+  const removeValue = (valToRemove: string) => {
+    onChange(values.filter(v => v !== valToRemove).join(', '));
+  };
+
+  return (
+    <div className={`flex flex-col gap-1.5`}>
+      <label className="text-small font-medium text-foreground">Check Thresholds (Days)</label>
+      <div
+        className={`flex flex-wrap gap-2 p-2 min-h-10 items-center rounded-medium bg-default-100 hover:bg-default-200 transition-colors cursor-text group ${isDisabled ? 'opacity-50 pointer-events-none' : ''}`}
+        onClick={(e) => {
+          // Focus input when clicking on container
+          const input = e.currentTarget.querySelector('input');
+          input?.focus();
+        }}
+      >
+        {values.map((v, i) => (
+          <Chip key={i} onClose={() => removeValue(v)} size="sm" variant="flat">
+            {v} days
+          </Chip>
+        ))}
+        <input
+          type="text"
+          className="bg-transparent outline-none flex-1 min-w-15 text-small placeholder:text-default-400"
+          placeholder={values.length === 0 ? "e.g. 7" : ""}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={isDisabled}
+        />
+      </div>
+      <p className="text-tiny text-default-400">Type a number and press Enter to add. Multiple thresholds supported.</p>
+    </div>
+  );
+};
 
 export function AddServicePage() {
   const navigate = useNavigate();
@@ -39,7 +92,11 @@ export function AddServicePage() {
     auth_user: '',
     auth_pass: '',
     notification_repeat: 0,
-    notification_delay: 0
+    notification_delay: 0,
+    notify_ssl_expiry: false,
+    notify_domain_expiry: false,
+    ssl_expiry_threshold: '7',
+    domain_expiry_threshold: '14'
   });
 
   // Fetch categories
@@ -53,6 +110,19 @@ export function AddServicePage() {
     queryKey: ['tags'],
     queryFn: getTags
   });
+
+  // Fetch webhooks and settings to check for available integrations
+  const { data: webhooks = [] } = useQuery({
+    queryKey: ['webhooks'],
+    queryFn: getWebhooks
+  });
+
+  const { data: settings = {} } = useQuery({
+    queryKey: ['settings'],
+    queryFn: getSettings
+  });
+
+  const hasIntegrations = (webhooks && webhooks.length > 0) || (settings && settings.smtp_host);
 
   // State for custom headers editor
   const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([]);
@@ -391,15 +461,26 @@ export function AddServicePage() {
                     onValueChange={(isSelected) => setFormData({ ...formData, notify_down: isSelected })}
                     color="primary"
                     size="sm"
+                    isDisabled={!hasIntegrations}
                   />
                 </div>
 
-                <div className={`grid grid-cols-1 md:grid-cols-2 gap-5 transition-opacity ${!formData.notify_down ? 'opacity-50 pointer-events-none' : ''}`}>
+                {!hasIntegrations && (
+                  <div className="mb-6 p-4 bg-warning-50 dark:bg-warning-900/10 border border-warning-200 dark:border-warning-900/20 rounded-lg flex items-start gap-3">
+                    <TriangleAlert className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+                    <div className="text-sm text-warning-800 dark:text-warning-300">
+                      <p className="font-semibold mb-1">No Integrations Configured</p>
+                      <p>You need to set up at least one integration (Webhook or SMTP) to enable notifications. <span className="underline cursor-pointer hover:text-warning-900 dark:hover:text-warning-200" onClick={() => navigate('/admin/integrations')}>Go to Integrations</span></p>
+                    </div>
+                  </div>
+                )}
+
+                <div className={`grid grid-cols-1 md:grid-cols-2 gap-5 transition-opacity ${(!formData.notify_down || !hasIntegrations) ? 'opacity-50 pointer-events-none' : ''}`}>
                   <div className="space-y-1">
                     <Select
                       label="Repeat notification"
                       labelPlacement="outside"
-                      isDisabled={!formData.notify_down}
+                      isDisabled={!formData.notify_down || !hasIntegrations}
                       selectedKeys={formData.notification_repeat !== undefined ? [formData.notification_repeat.toString()] : ["0"]}
                       onChange={(e) => setFormData({ ...formData, notification_repeat: parseInt(e.target.value) })}
                     >
@@ -418,7 +499,7 @@ export function AddServicePage() {
                     <Select
                       label="Delay notification"
                       labelPlacement="outside"
-                      isDisabled={!formData.notify_down}
+                      isDisabled={!formData.notify_down || !hasIntegrations}
                       selectedKeys={formData.notification_delay !== undefined ? [formData.notification_delay.toString()] : ["0"]}
                       onChange={(e) => setFormData({ ...formData, notification_delay: parseInt(e.target.value) })}
                     >
@@ -433,10 +514,54 @@ export function AddServicePage() {
                 </div>
               </div>
 
+              {/* Expiry Notifications (SSL & Domain) - Only for HTTP */}
+              {formData.type === 'http' && (
+                <div className={`mt-6 pt-6 border-t border-divider transition-opacity ${(!formData.notify_down || !hasIntegrations) ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <p className="text-sm font-medium mb-4">Expiry Notifications</p>
 
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* SSL Expiry */}
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">SSL Certificate Expiry</span>
+                        <Switch
+                          isSelected={formData.notify_ssl_expiry}
+                          onValueChange={(isSelected) => setFormData({ ...formData, notify_ssl_expiry: isSelected })}
+                          isDisabled={!formData.notify_down || !hasIntegrations}
+                          size="sm"
+                        />
+                      </div>
+                      {formData.notify_ssl_expiry && (
+                        <ThresholdInput
+                          value={formData.ssl_expiry_threshold?.toString() || '7'}
+                          onChange={(v) => setFormData({ ...formData, ssl_expiry_threshold: v })}
+                          isDisabled={!formData.notify_down || !hasIntegrations}
+                        />
+                      )}
+                    </div>
 
-
-            </CardBody>
+                    {/* Domain Expiry */}
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">Domain Name Expiry</span>
+                        <Switch
+                          isSelected={formData.notify_domain_expiry}
+                          onValueChange={(isSelected) => setFormData({ ...formData, notify_domain_expiry: isSelected })}
+                          isDisabled={!formData.notify_down || !hasIntegrations}
+                          size="sm"
+                        />
+                      </div>
+                      {formData.notify_domain_expiry && (
+                        <ThresholdInput
+                          value={formData.domain_expiry_threshold?.toString() || '14'}
+                          onChange={(v) => setFormData({ ...formData, domain_expiry_threshold: v })}
+                          isDisabled={!formData.notify_down || !hasIntegrations}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}            </CardBody>
           </Card>
         </SplitSection>
 

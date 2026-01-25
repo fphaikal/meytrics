@@ -247,6 +247,35 @@ async function checkService(service) {
       console.log(`📝 Incident recorded for ${service.name}`);
     }
 
+    // Sync with Dashboard Incidents (db.incident)
+    const activeDashboardIncident = await db.incident.findFirst({
+      where: {
+        status: { not: 'resolved' },
+        services: { some: { service_id: service.id } }
+      }
+    });
+
+    if (!activeDashboardIncident) {
+      await db.incident.create({
+        data: {
+          title: `Service Down: ${service.name}`,
+          description: `Automated detection. Error: ${error}`,
+          status: 'investigating',
+          severity: 'major',
+          services: {
+            create: { service_id: service.id }
+          },
+          updates: {
+            create: {
+              message: `Detected outage: ${error}`,
+              status: 'investigating'
+            }
+          }
+        }
+      });
+      console.log(`📝 Dashboard Incident created for ${service.name}`);
+    }
+
     // Handle Notifications
     if (service.notify_down) {
       // 1. Check Notification Delay
@@ -330,6 +359,33 @@ async function checkService(service) {
           status: 'resolved'
         }
       });
+
+      // Also resolve any public/dashboard Incident
+      const activeDashboardIncident = await db.incident.findFirst({
+        where: {
+          status: { not: 'resolved' },
+          services: {
+            some: { service_id: service.id }
+          }
+        }
+      });
+
+      if (activeDashboardIncident) {
+        await db.incident.update({
+          where: { id: activeDashboardIncident.id },
+          data: {
+            status: 'resolved',
+            resolved_at: new Date(),
+            updates: {
+              create: {
+                message: `Service recovered. Response time: ${responseTime}ms`,
+                status: 'resolved'
+              }
+            }
+          }
+        });
+        console.log(`✅ Dashboard Incident resolved for ${service.name}`);
+      }
 
       console.log(`✅ Incident resolved for ${service.name} (duration: ${durationSeconds}s)`);
 

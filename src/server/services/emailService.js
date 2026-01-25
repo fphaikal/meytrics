@@ -13,7 +13,13 @@ async function getSettings() {
 async function createTransporter(settings) {
   // settings passed or fetch? 
   // Optimization: pass settings if already fetched.
-  const config = settings || await getSettings();
+  let config = settings || await getSettings();
+
+  // If password is masked, fetch the real one from DB
+  if (config && config.smtp_pass === '********') {
+    const dbSettings = await getSettings();
+    config = { ...config, smtp_pass: dbSettings.smtp_pass };
+  }
 
   if (!config.smtp_host || !config.smtp_user || !config.smtp_pass) {
     return null;
@@ -133,24 +139,48 @@ export async function sendRecoveryAlert(service, responseTime) {
   }
 }
 
-export async function sendTestEmail(email) {
-  const settings = await getSettings();
+export async function sendTestEmail(email, config = null) {
+  console.log('[SMTP] Starting test email send...');
+
+  const settings = config || await getSettings();
+  console.log('[SMTP] Config to use:', {
+    host: settings.smtp_host,
+    port: settings.smtp_port,
+    user: settings.smtp_user,
+    pass: settings.smtp_pass ? '***Present***' : '***Missing***',
+    from: settings.smtp_from
+  });
+
   const transporter = await createTransporter(settings);
 
   if (!transporter) {
+    console.error('[SMTP] Failed to create transporter. Missing config?');
     throw new Error('SMTP not configured. Please configure SMTP settings first.');
   }
 
-  await transporter.sendMail({
-    from: settings.smtp_from_name ? `"${settings.smtp_from_name}" <${settings.smtp_from || settings.smtp_user}>` : (settings.smtp_from || settings.smtp_user),
-    to: email,
-    subject: '📊 MEYTRICS - Test Email',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #3498db;">✅ SMTP Configuration Test</h2>
-        <p>If you're reading this, your SMTP configuration is working correctly!</p>
-        <p style="color: #666; font-size: 12px;">This is a test message from MEYTRICS.</p>
-      </div>
-    `
-  });
+  console.log('[SMTP] Transporter created. Sending mail...');
+
+  try {
+    const info = await transporter.sendMail({
+      from: settings.smtp_from_name ? `"${settings.smtp_from_name}" <${settings.smtp_from || settings.smtp_user}>` : (settings.smtp_from || settings.smtp_user),
+      to: email,
+      subject: '📊 MEYTRICS - Test Email',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #3498db;">✅ SMTP Configuration Test</h2>
+          <p>If you're reading this, your SMTP configuration is working correctly!</p>
+          <p style="color: #666; font-size: 12px;">This is a test message from MEYTRICS.</p>
+          <p style="color: #999; font-size: 10px; margin-top: 20px;">
+            Configuration used:<br>
+            Host: ${settings.smtp_host}:${settings.smtp_port}<br>
+            User: ${settings.smtp_user}
+          </p>
+        </div>
+      `
+    });
+    console.log('[SMTP] Email sent successfully!', info);
+  } catch (err) {
+    console.error('[SMTP] Error sending email:', err);
+    throw err;
+  }
 }
