@@ -2,6 +2,14 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.51] - 2026-01-26
+
+ ### 🐛 Docker Fixes
+- **Static File Serving**: Fixed `Cannot GET /` in Docker by updating `server.js`.
+    - Removed regex-based catch-all route which was causing issues.
+    - Added explicit production checks for `dist` directory and switched to standard `*` fallback route for SPA.
+    - Added extensive debug logs for verifying `NODE_ENV` and static asset paths.
+
 ## [1.3.5] - 2026-01-25
 ### ✨ Improvements
 - **Incident Synchronization**: Implemented bidirectional sync between service monitoring and public status pages. Automated downtimes now reliably create and resolve `Incidents`, ensuring the public dashboard reflects real-time system health without manual intervention.

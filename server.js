@@ -151,13 +151,27 @@ app.use('/api/admin/status-pages', authMiddleware, statusPagesRouter);
 app.use('/api/tags', authMiddleware, tagsRouter);
 
 // Serve static files in production
+// Serve static files in production
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')));
+  const distPath = path.join(__dirname, 'dist');
+  console.log(`📂 Static file serving enabled. Path: ${distPath}`);
+
+  if (fs.existsSync(distPath)) {
+    console.log('✅ Dist directory exists');
+  } else {
+    console.error('❌ Dist directory MISSING!');
+  }
+
+  app.use(express.static(distPath));
 
   // Handle SPA routing
-  app.get(/^(.*)$/, (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  app.get('*', (req, res) => {
+    console.log(`🔄 Catch-all serving index.html for: ${req.url}`);
+    res.sendFile(path.join(distPath, 'index.html'));
   });
+} else {
+  console.log('⚠️  Not in production mode, static files will not be served');
+  console.log(`Current NODE_ENV: ${process.env.NODE_ENV}`);
 }
 
 // Start ping jobs
