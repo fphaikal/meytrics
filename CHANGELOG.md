@@ -2,11 +2,14 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
-## [1.3.52] - 2026-01-26
+## [1.3.53] - 2026-01-26
 
- ### 🐛 Hotfix
-- **Express 5 Compatibility**: Fixed server crash on startup in Docker.
-    - Updated catch-all route to use Regex `/(.*)/` instead of string `*`, as Express 5 strictly enforces path syntax and `*` is no longer valid.
+### ✨ Improvements
+- **Instant Service Analysis**: Adding a new service now immediately triggers background checks for **SSL Expiry**, **Domain Expiry**, and **Geographic Location**, significantly reducing the time to first insight (previously waited for scheduled jobs or manual refresh).
+
+### 🐛 Docker Fixes
+- **File Uploads**: Fixed 404 error when accessing uploaded files (logos/favicons).
+  - Updated static file serving in `server.js` to correctly point to the `DATA_DIR/uploads` volume path instead of the transient application directory.
 
 ## [1.3.51] - 2026-01-26
 

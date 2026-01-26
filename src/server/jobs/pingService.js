@@ -480,6 +480,64 @@ export async function startPingJobs() {
   console.log(`✅ Ping jobs started for ${services.length} services`);
 }
 
+// Check details for a single service (SSL, Domain, GeoIP)
+export async function checkServiceDetails(service) {
+  // Only check for HTTP/HTTPS services
+  if (service.type !== 'http' && service.type !== 'https') return;
+
+  // 1. SSL Check
+  if (service.url.startsWith('https') || service.type === 'https') {
+    try {
+      const sslResult = await checkSSL(service.url);
+      if (sslResult) {
+        await db.service.update({
+          where: { id: service.id },
+          data: { ssl_expiry: sslResult.validTo }
+        });
+        console.log(`🔒 SSL updated for ${service.name}: ${sslResult.daysRemaining} days remaining`);
+      }
+    } catch (err) {
+      console.error(`SSL check failed for ${service.name}:`, err.message);
+    }
+  }
+
+  // 2. Domain Check
+  try {
+    const domainResult = await checkDomainExpiry(service.url);
+    if (domainResult) {
+      await db.service.update({
+        where: { id: service.id },
+        data: { domain_expiry: domainResult.expiryDate }
+      });
+      console.log(`globe Domain updated for ${service.name}: ${domainResult.daysRemaining} days remaining`);
+    }
+  } catch (err) {
+    console.error(`Domain check failed for ${service.name}:`, err.message);
+  }
+
+  // 3. GeoIP Check
+  try {
+    // Small delay to respect rate limits if calling multiple
+    await new Promise(r => setTimeout(r, 1000));
+    const geoResult = await checkServerLocation(service.url);
+    if (geoResult) {
+      await db.service.update({
+        where: { id: service.id },
+        data: {
+          server_country: geoResult.country,
+          server_city: geoResult.city,
+          server_lat: geoResult.lat,
+          server_lon: geoResult.lon,
+          region: `${geoResult.city}, ${geoResult.country}`
+        }
+      });
+      console.log(`📍 Location updated for ${service.name}: ${geoResult.city}, ${geoResult.country}`);
+    }
+  } catch (err) {
+    console.error(`GeoIP check failed for ${service.name}:`, err.message);
+  }
+}
+
 async function runSslChecks() {
   console.log('🔒 Starting SSL/Domain/GeoIP checks...');
   const services = await db.service.findMany({
@@ -490,56 +548,7 @@ async function runSslChecks() {
   });
 
   for (const service of services) {
-    // 1. SSL Check
-    if (service.url.startsWith('https') || service.type === 'https') {
-      try {
-        const sslResult = await checkSSL(service.url);
-        if (sslResult) {
-          await db.service.update({
-            where: { id: service.id },
-            data: { ssl_expiry: sslResult.validTo }
-          });
-          console.log(`🔒 SSL updated for ${service.name}: ${sslResult.daysRemaining} days remaining`);
-        }
-      } catch (err) {
-        console.error(`SSL check failed for ${service.name}:`, err.message);
-      }
-    }
-
-    // 2. Domain Check
-    try {
-      const domainResult = await checkDomainExpiry(service.url);
-      if (domainResult) {
-        await db.service.update({
-          where: { id: service.id },
-          data: { domain_expiry: domainResult.expiryDate }
-        });
-        console.log(`globe Domain updated for ${service.name}: ${domainResult.daysRemaining} days remaining`);
-      }
-    } catch (err) {
-      console.error(`Domain check failed for ${service.name}:`, err.message);
-    }
-
-    // 3. GeoIP Check
-    try {
-      await new Promise(r => setTimeout(r, 1500));
-      const geoResult = await checkServerLocation(service.url);
-      if (geoResult) {
-        await db.service.update({
-          where: { id: service.id },
-          data: {
-            server_country: geoResult.country,
-            server_city: geoResult.city,
-            server_lat: geoResult.lat,
-            server_lon: geoResult.lon,
-            region: `${geoResult.city}, ${geoResult.country}`
-          }
-        });
-        console.log(`📍 Location updated for ${service.name}: ${geoResult.city}, ${geoResult.country}`);
-      }
-    } catch (err) {
-      console.error(`GeoIP check failed for ${service.name}:`, err.message);
-    }
+    await checkServiceDetails(service);
   }
 }
 

@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../db.js';
+import { checkServiceDetails } from '../jobs/pingService.js';
 
 const router = express.Router();
 
@@ -126,6 +127,12 @@ router.post('/', async (req, res) => {
         db_query: req.body.db_query || null
       }
     });
+
+    // Trigger immediate background check for SSL/Domain/GeoIP
+    // Fire and forget - don't await
+    checkServiceDetails(newService).catch(err =>
+      console.error(`Error in immediate service details check for ${newService.name}:`, err)
+    );
 
     res.status(201).json(newService);
   } catch (error) {

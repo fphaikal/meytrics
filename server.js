@@ -80,10 +80,7 @@ app.use('/api/public/status-overrides', statusOverridesRouter);
 
 app.use('/api/public/status-pages', publicStatusPagesRouter);
 
-// Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// File upload configuration
+// File upload configuration imports
 import multer from 'multer';
 import fs from 'fs';
 
@@ -95,6 +92,11 @@ const uploadDir = process.env.DATA_DIR
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
+
+console.log(`📂 Uploads directory: ${uploadDir}`);
+
+// Serve uploaded files
+app.use('/uploads', express.static(uploadDir));
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
