@@ -165,9 +165,16 @@ if (process.env.NODE_ENV === 'production') {
   app.use(express.static(distPath));
 
   // Handle SPA routing
-  app.get('*', (req, res) => {
+  // Using regex because '*' is 404 in Express 5 path-to-regexp
+  app.get(/(.*)/, (req, res) => {
     console.log(`🔄 Catch-all serving index.html for: ${req.url}`);
-    res.sendFile(path.join(distPath, 'index.html'));
+    const indexHtml = path.join(distPath, 'index.html');
+    if (fs.existsSync(indexHtml)) {
+      res.sendFile(indexHtml);
+    } else {
+      console.error('❌ index.html not found in dist path!');
+      res.status(404).send('Application build not found');
+    }
   });
 } else {
   console.log('⚠️  Not in production mode, static files will not be served');

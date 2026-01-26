@@ -2,6 +2,12 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.52] - 2026-01-26
+
+ ### 🐛 Hotfix
+- **Express 5 Compatibility**: Fixed server crash on startup in Docker.
+    - Updated catch-all route to use Regex `/(.*)/` instead of string `*`, as Express 5 strictly enforces path syntax and `*` is no longer valid.
+
 ## [1.3.51] - 2026-01-26
 
  ### 🐛 Docker Fixes
