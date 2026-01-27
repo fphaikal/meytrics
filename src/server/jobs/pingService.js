@@ -8,15 +8,68 @@ import { checkServerLocation } from '../utils/geoip.js';
 // Store last status for each service to detect state changes
 const lastStatus = new Map();
 
-// Store active intervals for each service
-const activeIntervals = new Map();
+// Scheduler and Queue State
+const PING_QUEUE = [];
+const QUEUE_FLUSH_INTERVAL = 5000; // Flush DB every 5 seconds
+const servicesMap = new Map(); // Store service configurations: { id: service }
+const nextRunMap = new Map(); // Store next run time: { id: timestamp }
+
+// Initialize Buffer Flush Interval
+setInterval(flushPingQueue, QUEUE_FLUSH_INTERVAL);
+
+// --- SCHEDULER LOGIC ---
+
+/**
+ * Single tick loop (Heartbeat) - runs every 1 second
+ */
+setInterval(() => {
+  const now = Date.now();
+
+  servicesMap.forEach((service, id) => {
+    // Skip if paused
+    if (service.paused) return;
+
+    // Check if it's time to run
+    const nextRun = nextRunMap.get(id) || 0;
+    if (now >= nextRun) {
+      // Set next run time based on interval
+      const intervalMs = (service.interval || 60) * 1000;
+      nextRunMap.set(id, now + intervalMs);
+
+      // Trigger check (Fire & Forget)
+      checkService(service);
+    }
+  });
+}, 1000);
+
+/**
+ * Flush buffered ping results to database
+ */
+async function flushPingQueue() {
+  if (PING_QUEUE.length === 0) return;
+
+  const batch = PING_QUEUE.splice(0, PING_QUEUE.length); // Take all items
+  try {
+    await db.ping.createMany({
+      data: batch
+    });
+    // Quiet log, only if huge batch
+    if (batch.length > 50) {
+      console.log(`💾 Saved ${batch.length} ping results to DB`);
+    }
+  } catch (error) {
+    console.error('❌ Error flushing ping queue:', error);
+    // Rescue strategy: try to insert one by one or re-queue (simple re-queue for now)
+    // In production, might want to limit re-queue size
+    PING_QUEUE.push(...batch);
+  }
+}
+
+// --- CHECK LOGIC ---
 
 async function checkService(service) {
-  // Skip paused services
-  if (service.paused) {
-    console.log(`⏸️ [${new Date().toISOString()}] ${service.name}: PAUSED (skipped)`);
-    return;
-  }
+  // Skip paused services (redundant check but safe)
+  if (service.paused) return;
 
   const startTime = Date.now();
   let status = 'up';
@@ -208,24 +261,26 @@ async function checkService(service) {
     responseTime = Date.now() - startTime;
   }
 
-  // Save ping result
-  // Prisma async
-  await db.ping.create({
-    data: {
-      service_id: service.id,
-      status,
-      response_time: typeof responseTime === 'number' ? responseTime : 0,
-      status_code: statusCode,
-      error: error ? String(error) : null
-    }
+  // --- SAVE RESULT (BATCHING) ---
+
+  PING_QUEUE.push({
+    service_id: service.id,
+    status,
+    response_time: typeof responseTime === 'number' ? responseTime : 0,
+    status_code: statusCode,
+    error: error ? String(error) : null
+    // created_at handled by DB default or Prisma? 
+    // Prisma creates timestamp automatically usually, but for createMany we might want to be explicit? 
+    // Default Prisma behaviour is fine if schema has @default(now())
   });
 
-  // Check for status change and send notifications
+  // --- STATE CHANGE & ALERTING (IMMEDIATE) ---
+
   const prevStatus = lastStatus.get(service.id);
 
   // 1. Handle DOWN state
   if (status === 'down') {
-    // Check open incident
+    // Check open incident (IMMEDIATE DB QUERY - priority)
     let openIncident = await db.serviceIncident.findFirst({
       where: {
         service_id: service.id,
@@ -405,25 +460,17 @@ async function checkService(service) {
     triggerWebhooks('slow', service, `Response time: ${responseTime}ms (threshold: ${service.slow_threshold}ms)`);
   }
 
-  const statusIcon = status === 'up' ? '✅' : '❌';
-  console.log(`${statusIcon} [${new Date().toISOString()}] ${service.name}: ${status} (${responseTime}ms)`);
-}
-
-function scheduleService(service) {
-  if (activeIntervals.has(service.id)) {
-    clearInterval(activeIntervals.get(service.id));
+  // QUIET MODE: Only log status change or explicit down
+  if (status !== prevStatus || status === 'down') {
+    const statusIcon = status === 'up' ? '✅' : '❌';
+    console.log(`${statusIcon} [${new Date().toISOString()}] ${service.name}: ${status} (${responseTime}ms)`);
   }
-  const intervalMs = (service.interval || 60) * 1000;
-  const intervalId = setInterval(() => checkService(service), intervalMs);
-  activeIntervals.set(service.id, intervalId);
-  console.log(`📅 Scheduled ${service.name} every ${intervalMs / 1000}s`);
 }
 
 export async function startPingJobs() {
-  console.log('🚀 Starting ping jobs...');
+  console.log('🚀 Starting ping jobs (Optimized Scheduler)...');
 
-  // Get all active services
-  // Get all active services
+  // Load initial services
   const services = await db.service.findMany({
     where: { paused: 0 }
   });
@@ -433,51 +480,53 @@ export async function startPingJobs() {
   }
 
   services.forEach(service => {
-    checkService(service);
-    scheduleService(service);
+    servicesMap.set(service.id, service);
+    // Randomize initial start time to prevent thundering herd
+    const randomDelay = Math.floor(Math.random() * 5000);
+    nextRunMap.set(service.id, Date.now() + randomDelay);
   });
+
+  console.log(`✅ Loaded ${services.length} services into scheduler`);
 
   // Watch for service changes every 30s
   setInterval(async () => {
     try {
       const currentServices = await db.service.findMany(); // All services
 
-      // Find new/updated
+      // Sync Memory Map with DB
+      const currentIds = new Set();
+
       currentServices.forEach(service => {
-        const existingInterval = activeIntervals.get(service.id);
+        currentIds.add(service.id);
 
-        // Paused
-        if (service.paused && existingInterval) {
-          console.log(`⏸️ Service paused: ${service.name}`);
-          clearInterval(existingInterval);
-          activeIntervals.delete(service.id);
-          return;
-        }
+        // Update or Add
+        // (Primitive check: if interval changed, or newly added)
+        const inMemory = servicesMap.get(service.id);
 
-        // New or Resumed
-        if (!service.paused && !existingInterval) {
-          console.log(`➕ New/resumed service detected: ${service.name}`);
-          checkService(service);
-          scheduleService(service);
+        if (!inMemory) {
+          console.log(`➕ New service loaded: ${service.name}`);
+          servicesMap.set(service.id, service);
+          nextRunMap.set(service.id, Date.now()); // Run immediately next tick
+        } else {
+          // Update config in memory (e.g. interval changed, url changed)
+          // We just overwrite the object reference
+          servicesMap.set(service.id, service);
         }
       });
 
-      // Removed
-      const currentIds = new Set(currentServices.map(s => s.id));
-      for (const [serviceId, intervalId] of activeIntervals) {
-        if (!currentIds.has(serviceId)) {
-          console.log(`➖ Service removed: ${serviceId}`);
-          clearInterval(intervalId);
-          activeIntervals.delete(serviceId);
-          lastStatus.delete(serviceId);
+      // Remove deleted services
+      for (const [id, s] of servicesMap) {
+        if (!currentIds.has(id)) { // It was deleted from DB
+          console.log(`➖ Service removed from scheduler: ${s.name}`);
+          servicesMap.delete(id);
+          nextRunMap.delete(id);
+          lastStatus.delete(id);
         }
       }
     } catch (err) {
       console.error('Error refreshing services:', err);
     }
   }, 30000);
-
-  console.log(`✅ Ping jobs started for ${services.length} services`);
 }
 
 // Check details for a single service (SSL, Domain, GeoIP)

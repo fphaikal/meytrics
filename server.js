@@ -123,13 +123,26 @@ const upload = multer({
 });
 
 // Upload route
-app.post('/api/upload', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
-  }
+// Upload route with debug logging
+app.post('/api/upload', (req, res, next) => {
+  console.log('📥 Upload request received');
+  console.log('Headers:', req.headers);
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer error:', err);
+      return res.status(400).json({ error: err.message });
+    }
 
-  const fileUrl = `/uploads/${req.file.filename}`;
-  res.json({ url: fileUrl });
+    if (!req.file) {
+      console.error('❌ No file in request');
+      console.log('Body:', req.body);
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    console.log(`✅ File uploaded: ${req.file.filename} (${req.file.size} bytes)`);
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({ url: fileUrl });
+  });
 });
 
 // Badges (public, no auth)

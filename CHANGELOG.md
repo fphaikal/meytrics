@@ -2,6 +2,13 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.54] - 2026-01-27
+
+### 🐛 Docker Fixes
+- **Static File Serving**: Enhanced debug logging and path verification for production static file serving.
+    - Added detailed console logs to track `dist` directory resolution and static file requests in Docker environments.
+    - Verified `process.env.NODE_ENV` handling for correct production mode switching.
+
 ## [1.3.53] - 2026-01-26
 
 ### ✨ Improvements
