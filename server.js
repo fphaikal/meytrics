@@ -22,7 +22,10 @@ import apiKeysRouter from './src/server/routes/apiKeys.js';
 import statusOverridesRouter from './src/server/routes/statusOverrides.js';
 import statusPagesRouter from './src/server/routes/statusPages.js';
 import publicStatusPagesRouter from './src/server/routes/publicStatusPages.js';
+import publicSettingsRouter from './src/server/routes/publicSettings.js';
 import tagsRouter from './src/server/routes/tags.js';
+import ogImageRouter from './src/server/routes/ogImage.js';
+import { db } from './src/server/db.js';
 import { authMiddleware } from './src/server/middleware/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -77,8 +80,10 @@ app.use('/api/public/categories', categoriesRouter);
 app.use('/api/public/incidents', incidentsRouter);
 app.use('/api/public/maintenances', maintenancesRouter);
 app.use('/api/public/status-overrides', statusOverridesRouter);
+app.use('/api/public/settings', publicSettingsRouter);
 
 app.use('/api/public/status-pages', publicStatusPagesRouter);
+app.use('/api/og-image', ogImageRouter);
 
 // File upload configuration imports
 import multer from 'multer';
@@ -176,6 +181,70 @@ if (process.env.NODE_ENV === 'production') {
   } else {
     console.error('❌ Dist directory MISSING!');
   }
+
+  // SEO Injection for Status Pages
+  app.get('/status/:slug', async (req, res, next) => {
+    const { slug } = req.params;
+    if (slug.includes('.')) return next();
+
+    try {
+      const page = await db.statusPage.findUnique({ where: { slug } });
+      if (!page) return next();
+
+      const indexHtmlPath = path.join(distPath, 'index.html');
+      if (!fs.existsSync(indexHtmlPath)) return next();
+
+      let html = fs.readFileSync(indexHtmlPath, 'utf8');
+
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.get('host');
+      const fullUrl = `${protocol}://${host}/status/${slug}`;
+      const domain = host;
+
+      const pageTitle = page.title || page.name || 'Status Page';
+      const title = `${pageTitle} by Meytrics`;
+      const description = page.meta_description || page.subtitle || 'Service Status';
+
+      // Determine OG Image URL
+      let ogImage = page.og_image_url;
+      if (!ogImage) {
+        ogImage = `${protocol}://${host}/api/og-image/${page.slug}`;
+      } else if (!ogImage.startsWith('http')) {
+        ogImage = `${protocol}://${host}${ogImage}`;
+      }
+
+      // Inject Metadata
+      // 1. Replace Title
+      html = html.replace(/<title>.*?<\/title>/, `<title>${title}</title>`);
+
+      // 2. Inject Meta Tags (Prepend to head for priority)
+      const metaTags = `
+        <meta name="description" content="${description}">
+        
+        <!-- Open Graph / Facebook -->
+        <meta property="og:type" content="website">
+        <meta property="og:url" content="${fullUrl}">
+        <meta property="og:title" content="${title}">
+        <meta property="og:description" content="${description}">
+        <meta property="og:image" content="${ogImage}">
+
+        <!-- Twitter -->
+        <meta property="twitter:card" content="summary_large_image">
+        <meta property="twitter:domain" content="${domain}">
+        <meta property="twitter:url" content="${fullUrl}">
+        <meta property="twitter:title" content="${title}">
+        <meta property="twitter:description" content="${description}">
+        <meta property="twitter:image" content="${ogImage}">
+      `;
+
+      html = html.replace('<head>', `<head>${metaTags}`);
+
+      res.send(html);
+    } catch (error) {
+      console.error('SEO Injection Error:', error);
+      next();
+    }
+  });
 
   app.use(express.static(distPath));
 

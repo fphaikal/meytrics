@@ -7,7 +7,7 @@ import {
   getServiceDailyPings,
   getActiveIncidents,
   getPublicMaintenances,
-  getSettings,
+  getPublicSettings,
   getPublicStatusPageSections,
   type StatusPageSection
 } from '../lib/api';
@@ -37,7 +37,7 @@ export function StatusPage() {
   // Fetch settings for time formatting and refresh interval
   const { data: settings = {} } = useQuery<Partial<Settings>>({
     queryKey: ['settings'],
-    queryFn: getSettings,
+    queryFn: getPublicSettings,
   });
 
   // Fetch services for this status page
@@ -232,12 +232,25 @@ export function StatusPage() {
   }
 
   return (
-    <div className={`min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col transition-colors ${statusPage.bg_pattern && statusPage.bg_pattern !== 'none' ? `bg-pattern-${statusPage.bg_pattern}` : ''}`}>
+    <div
+      className={`min-h-screen flex flex-col transition-colors ${statusPage.bg_pattern && statusPage.bg_pattern !== 'none' ? `bg-pattern-${statusPage.bg_pattern}` : ''}`}
+      style={{
+        backgroundColor: statusPage.bg_color || undefined,
+        color: statusPage.text_color || undefined,
+        // @ts-ignore
+        '--status-primary': statusPage.primary_color || '#3b82f6',
+        '--status-secondary': statusPage.secondary_color || '#64748b',
+        '--status-success': statusPage.success_color || '#22c55e',
+        '--status-warning': statusPage.warning_color || '#eab308',
+        '--status-error': statusPage.error_color || '#ef4444',
+      }}
+    >
       {/* Dark header area that extends down for overlap effect */}
       <div style={{ backgroundColor: statusPage.hero_bg_color }} className="pt-8">
         <Header
           title={statusPage.navbar_title || statusPage.name}
           subtitle={statusPage.subtitle}
+          logoUrl={statusPage.logo_url}
           lastUpdate={lastUpdate}
           nextUpdate={nextUpdate}
         />
@@ -247,34 +260,49 @@ export function StatusPage() {
 
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 -mt-14">
         {/* Overall Status Card - overlapping the dark header */}
-        <div className="bg-white dark:bg-background rounded-lg shadow-md p-12 mb-6">
-          <div className="flex items-center gap-4">
+        <div className="bg-white dark:bg-background rounded-lg shadow-md p-6 md:p-12 mb-6" style={{ backgroundColor: statusPage.bg_color === '#f8fafc' ? undefined : '#ffffff' }}>
+          <div className="flex flex-row items-center gap-4 text-left">
             {/* Pulsing status indicator */}
-            <div className="relative">
+            <div className="relative shrink-0">
               <div
-                className={`w-14 h-14 rounded-full ${hasActiveIncidents || hasDownServices
-                  ? 'bg-red-500'
+                className={`w-6 h-6 rounded-full ${hasActiveIncidents || hasDownServices
+                  ? 'bg-[var(--status-error)]'
                   : allOperational
-                    ? 'bg-emerald-400'
-                    : 'bg-yellow-500'
+                    ? 'bg-[var(--status-success)]'
+                    : 'bg-[var(--status-warning)]'
                   }`}
+                style={{
+                  backgroundColor: hasActiveIncidents || hasDownServices
+                    ? 'var(--status-error)'
+                    : allOperational
+                      ? 'var(--status-success)'
+                      : 'var(--status-warning)'
+                }}
               />
               {/* Pulse ring animation */}
               <div
-                className={`absolute inset-0 w-14 h-14 rounded-full animate-ping opacity-75 ${hasActiveIncidents || hasDownServices
-                  ? 'bg-red-400'
-                  : allOperational
-                    ? 'bg-emerald-300'
-                    : 'bg-yellow-400'
-                  }`}
-                style={{ animationDuration: '2s' }}
+                className={`absolute inset-0 w-6 h-6 rounded-full animate-ping opacity-75`}
+                style={{
+                  animationDuration: '2s',
+                  backgroundColor: hasActiveIncidents || hasDownServices
+                    ? 'var(--status-error)'
+                    : allOperational
+                      ? 'var(--status-success)'
+                      : 'var(--status-warning)'
+                }}
               />
             </div>
-            <div>
-              <span className="text-3xl text-slate-700 dark:text-slate-200 font-bold">All systems </span>
+            <div className="flex flex-wrap items-center gap-x-2">
+              <span className="text-xl md:text-2xl font-bold" style={{ color: statusPage.text_color }}>All systems </span>
               <span
-                className={`text-3xl font-medium ${hasActiveIncidents || hasDownServices ? 'text-red-500' : allOperational ? 'text-emerald-500' : 'text-yellow-500'
-                  }`}
+                className="text-xl md:text-2xl font-medium"
+                style={{
+                  color: hasActiveIncidents || hasDownServices
+                    ? 'var(--status-error)'
+                    : allOperational
+                      ? 'var(--status-success)'
+                      : 'var(--status-warning)'
+                }}
               >
                 {hasActiveIncidents ? 'Experiencing Issues' : hasDownServices ? 'Partially Down' : allOperational ? 'Operational' : 'Partially Degraded'}
               </span>
@@ -289,7 +317,7 @@ export function StatusPage() {
         <MaintenanceBanner maintenances={maintenances} />
 
         {/* Services Section */}
-        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-4">Services</h2>
+        <h2 className="text-lg font-semibold mb-4" style={{ color: statusPage.text_color }}>Services</h2>
 
         {services.length === 0 ? (
           <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-100 dark:border-slate-700 p-8 text-center text-slate-500 dark:text-slate-400">
@@ -302,8 +330,8 @@ export function StatusPage() {
               sections.map((section) => (
                 <div key={section.id || 'uncategorized'}>
                   {section.name && (
-                    <h3 className="text-md font-medium text-slate-600 dark:text-slate-400 mb-3 flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <h3 className="text-md font-medium text-slate-600 dark:text-slate-400 mb-3 flex items-center gap-2" style={{ color: 'var(--status-secondary)' }}>
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--status-primary)' }}></span>
                       {section.name}
                     </h3>
                   )}
@@ -318,6 +346,14 @@ export function StatusPage() {
                           service={fullService}
                           dailyPings={dailyPings[fullService.id] || []}
                           settings={settings}
+                          monitorStyle={(statusPage.monitor_style as 'bars' | 'dots' | 'list') || 'bars'}
+                          statusColors={{
+                            success: statusPage.success_color,
+                            warning: statusPage.warning_color,
+                            error: statusPage.error_color,
+                            primary: statusPage.primary_color,
+                            secondary: statusPage.secondary_color,
+                          }}
                         />
                       );
                     })}
@@ -333,6 +369,14 @@ export function StatusPage() {
                     service={service}
                     dailyPings={dailyPings[service.id] || []}
                     settings={settings}
+                    monitorStyle={(statusPage.monitor_style as 'bars' | 'dots' | 'list') || 'bars'}
+                    statusColors={{
+                      success: statusPage.success_color,
+                      warning: statusPage.warning_color,
+                      error: statusPage.error_color,
+                      primary: statusPage.primary_color,
+                      secondary: statusPage.secondary_color,
+                    }}
                   />
                 ))}
               </div>
@@ -342,9 +386,12 @@ export function StatusPage() {
       </main>
 
       {/* Footer - matches UptimeRobot */}
-      <footer className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 py-4 mt-8">
-        <div className="max-w-4xl mx-auto px-4 flex items-center justify-between text-sm">
-          <div className="flex items-center gap-4 text-slate-500 dark:text-slate-400">
+      <footer
+        className="border-t border-slate-200 dark:border-slate-700 py-4 mt-8"
+        style={{ backgroundColor: statusPage.footer_bg_color || undefined }}
+      >
+        <div className="max-w-4xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between text-sm gap-4 md:gap-0">
+          <div className="flex items-center gap-4 text-slate-500 dark:text-slate-400 justify-center md:justify-start" style={{ color: statusPage.secondary_color }}>
             <button
               onClick={toggleFullscreen}
               className="flex items-center gap-1.5 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
@@ -366,19 +413,19 @@ export function StatusPage() {
           </div>
 
 
-          <div className="flex items-center gap-4 text-slate-500 dark:text-slate-400">
-            <a href="/admin" className="hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+          <div className="flex items-center gap-4 justify-center md:justify-end" style={{ color: statusPage.secondary_color }}>
+            <a href="/admin" className="hover:opacity-80 transition-opacity">
               Admin
             </a>
-            <span className="text-slate-300 dark:text-slate-600">|</span>
+            <span className="opacity-50">|</span>
             <span>
-              Status page by <span className="font-medium text-slate-700 dark:text-slate-200">MEYTRICS</span>
+              Status page by <span className="font-medium" style={{ color: statusPage.text_color }}>MEYTRICS</span>
             </span>
           </div>
 
 
         </div>
-      </footer >
-    </div >
+      </footer>
+    </div>
   );
 }

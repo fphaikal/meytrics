@@ -3,13 +3,22 @@ import type { DailyPing } from '../lib/types';
 
 interface UptimeBarsProps {
     dailyPings: DailyPing[];
+    variant?: 'bars' | 'dots';
+    statusColors?: {
+        success?: string;
+        warning?: string;
+        error?: string;
+        primary?: string;
+        secondary?: string;
+    };
 }
 
-export function UptimeBars({ dailyPings }: UptimeBarsProps) {
+export function UptimeBars({ dailyPings, variant = 'bars', statusColors }: UptimeBarsProps) {
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
 
-    // Take last 90 days
+    // Take last 90 days. For dots we might want distinct count?
+    // UptimeRobot uses 90 bars/dots.
     const bars = dailyPings.slice(-90);
 
     // Fill up to 90 bars if needed
@@ -36,58 +45,102 @@ export function UptimeBars({ dailyPings }: UptimeBarsProps) {
 
     return (
         <div className="relative">
-            {/* Uptime Bars - thin vertical lines with proportional colors */}
-            <div className="flex items-end gap-[1px] h-8">
-                {filledBars.map((ping, index) => {
-                    // Calculate uptime percentage for proportional coloring
-                    const uptimePercent = ping && ping.uptime_percent ? parseFloat(ping.uptime_percent) : 0;
-                    const downtimePercent = 100 - uptimePercent;
+            {/* Standard Bars */}
+            {variant === 'bars' ? (
+                <div className="flex items-end gap-[1px] h-8">
+                    {filledBars.map((ping, index) => {
+                        // Calculate uptime percentage for proportional coloring
+                        const uptimePercent = ping && ping.uptime_percent ? parseFloat(ping.uptime_percent) : 0;
+                        const downtimePercent = 100 - uptimePercent;
 
-                    // No data - gray bar
-                    if (!ping || ping.status === 'no_data') {
+                        // Responsive visibility: Hide oldest 60 bars (indices 0-59) on mobile (< sm breakpoint)
+                        // Shows 30 bars on mobile, 90 bars on tablet/desktop
+                        const visibilityClass = index < 60 ? 'hidden sm:block' : 'block';
+                        const flexVisibilityClass = index < 60 ? 'hidden sm:flex' : 'flex';
+
+                        // No data - gray bar
+                        if (!ping || ping.status === 'no_data') {
+                            return (
+                                <div
+                                    key={index}
+                                    className={`${visibilityClass} flex-1 min-w-[2px] h-full rounded-full cursor-pointer transition-opacity hover:opacity-70 bg-foreground/15`}
+                                    onMouseEnter={(e) => ping && handleMouseEnter(index, e)}
+                                    onMouseLeave={() => setHoveredIndex(null)}
+                                    style={{
+                                        backgroundColor: !ping ? undefined : 'rgba(156, 163, 175, 0.2)'
+                                    }}
+                                />
+                            );
+                        }
+
+                        // Has data - show proportional green/red bar
+                        const minRedHeight = 15;
+                        const displayRedHeight = downtimePercent > 0 ? Math.max(downtimePercent, minRedHeight) : 0;
+                        const displayGreenHeight = 100 - displayRedHeight;
+
                         return (
                             <div
                                 key={index}
-                                className="flex-1 min-w-[2px] h-full rounded-full cursor-pointer transition-opacity hover:opacity-70 bg-foreground/15"
+                                className={`${flexVisibilityClass} flex-1 min-w-[2px] h-full rounded-full cursor-pointer transition-opacity hover:opacity-70 flex-col overflow-hidden`}
+                                onMouseEnter={(e) => handleMouseEnter(index, e)}
+                                onMouseLeave={() => setHoveredIndex(null)}
+                            >
+                                {downtimePercent > 0 && (
+                                    <div
+                                        className={!statusColors ? "bg-red-500 w-full" : "w-full"}
+                                        style={{
+                                            height: `${displayRedHeight}%`,
+                                            backgroundColor: statusColors?.error
+                                        }}
+                                    />
+                                )}
+                                {displayGreenHeight > 0 && (
+                                    <div
+                                        className={!statusColors ? "bg-emerald-500 w-full flex-1" : "w-full flex-1"}
+                                        style={{
+                                            height: `${displayGreenHeight}%`,
+                                            backgroundColor: statusColors?.success
+                                        }}
+                                    />
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            ) : (
+                /* Dots Style */
+                <div className="flex items-center justify-between gap-[2px] h-8">
+                    {filledBars.map((ping, index) => {
+                        const uptimePercent = ping && ping.uptime_percent ? parseFloat(ping.uptime_percent) : 0;
+                        const isDown = uptimePercent < 100;
+                        const noData = !ping || ping.status === 'no_data';
+
+                        // Responsive visibility: Hide oldest 60 dots on mobile
+                        const visibilityClass = index < 60 ? 'hidden sm:block' : 'block';
+
+                        return (
+                            <div
+                                key={index}
+                                className={`${visibilityClass} flex-1 min-w-[4px] aspect-square rounded-full cursor-pointer transition-transform hover:scale-125 ${noData
+                                    ? 'bg-slate-200 dark:bg-slate-700'
+                                    : !statusColors
+                                        ? (isDown ? 'bg-red-500' : 'bg-emerald-500')
+                                        : ''
+                                    }`}
+                                style={{
+                                    backgroundColor: noData
+                                        ? undefined
+                                        : (isDown ? statusColors?.error : statusColors?.success)
+                                }}
                                 onMouseEnter={(e) => ping && handleMouseEnter(index, e)}
                                 onMouseLeave={() => setHoveredIndex(null)}
                             />
                         );
-                    }
+                    })}
+                </div>
+            )}
 
-                    // Has data - show proportional green/red bar
-                    // Apply minimum height for red portion to make it visible even with small downtime
-                    const minRedHeight = 15; // Minimum 15% height for red when there's any downtime
-                    const displayRedHeight = downtimePercent > 0 ? Math.max(downtimePercent, minRedHeight) : 0;
-                    const displayGreenHeight = 100 - displayRedHeight;
-
-                    return (
-                        <div
-                            key={index}
-                            className="flex-1 min-w-[2px] h-full rounded-full cursor-pointer transition-opacity hover:opacity-70 flex flex-col overflow-hidden"
-                            onMouseEnter={(e) => handleMouseEnter(index, e)}
-                            onMouseLeave={() => setHoveredIndex(null)}
-                        >
-                            {/* Red portion (downtime) at top - minimum height when any downtime */}
-                            {downtimePercent > 0 && (
-                                <div
-                                    className="bg-red-500 w-full"
-                                    style={{ height: `${displayRedHeight}%` }}
-                                />
-                            )}
-                            {/* Green portion (uptime) at bottom */}
-                            {displayGreenHeight > 0 && (
-                                <div
-                                    className="bg-emerald-500 w-full flex-1"
-                                    style={{ height: `${displayGreenHeight}%` }}
-                                />
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-
-            {/* Tooltip */}
+            {/* Tooltip (Same for both) */}
             {hoveredIndex !== null && filledBars[hoveredIndex] && (
                 <div
                     className="fixed z-50 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg pointer-events-none"

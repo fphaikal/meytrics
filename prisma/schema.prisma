@@ -39,6 +39,14 @@ model StatusPage {
   logo_url         String?
   favicon_url      String?
   hero_bg_color    String?             @default("#1e2a38")
+  primary_color    String?             @default("#3b82f6") // Blue-500
+  secondary_color  String?             @default("#64748b") // Slate-500
+  bg_color         String?             @default("#f8fafc") // Slate-50
+  text_color       String?             @default("#0f172a") // Slate-900
+  footer_bg_color  String?             @default("#ffffff")
+  success_color    String?             @default("#22c55e") // Green-500
+  warning_color    String?             @default("#eab308") // Yellow-500
+  error_color      String?             @default("#ef4444") // Red-500
   theme_mode       String?             @default("system")
   bg_pattern       String?             @default("none")
   monitor_style    String?             @default("bars")

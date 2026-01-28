@@ -269,6 +269,14 @@ interface StatusPageFormData {
   logo_url: string;
   favicon_url: string;
   hero_bg_color: string;
+  primary_color: string;
+  secondary_color: string;
+  bg_color: string;
+  text_color: string;
+  footer_bg_color: string;
+  success_color: string;
+  warning_color: string;
+  error_color: string;
   theme_mode: string;
   bg_pattern: string;
   monitor_style: string;
@@ -277,6 +285,37 @@ interface StatusPageFormData {
   custom_css: string;
   is_default: boolean;
   is_public: boolean;
+}
+
+function ColorPickerInput({ label, value, onChange, description }: { label: string, value: string, onChange: (val: string) => void, description?: string }) {
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium block">{label}</label>
+      <div className="flex gap-3 items-center">
+        <div className="relative">
+          <input
+            type="color"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="w-10 h-10 p-0 border-0 rounded-lg cursor-pointer overflow-hidden opacity-0 absolute inset-0 z-10"
+          />
+          <div
+            className="w-10 h-10 rounded-lg border border-default-200 shadow-sm"
+            style={{ backgroundColor: value }}
+          />
+        </div>
+        <Input
+          aria-label={`${label} Color Code`}
+          value={value}
+          onValueChange={onChange}
+          placeholder="#000000"
+          className="max-w-30"
+          startContent={<span className="text-default-400 text-small">#</span>}
+        />
+      </div>
+      {description && <p className="text-xs text-default-400 mt-1">{description}</p>}
+    </div>
+  );
 }
 
 export function EditStatusPagePage() {
@@ -296,6 +335,14 @@ export function EditStatusPagePage() {
     logo_url: '',
     favicon_url: '',
     hero_bg_color: '#1e2a38',
+    primary_color: '#3b82f6',
+    secondary_color: '#64748b',
+    bg_color: '#f8fafc',
+    text_color: '#0f172a',
+    footer_bg_color: '#ffffff',
+    success_color: '#22c55e',
+    warning_color: '#eab308',
+    error_color: '#ef4444',
     theme_mode: 'system',
     bg_pattern: 'none',
     monitor_style: 'bars',
@@ -367,6 +414,14 @@ export function EditStatusPagePage() {
             logo_url: page.logo_url || '',
             favicon_url: page.favicon_url || '',
             hero_bg_color: page.hero_bg_color || '#1e2a38',
+            primary_color: page.primary_color || '#3b82f6',
+            secondary_color: page.secondary_color || '#64748b',
+            bg_color: page.bg_color || '#f8fafc',
+            text_color: page.text_color || '#0f172a',
+            footer_bg_color: page.footer_bg_color || '#ffffff',
+            success_color: page.success_color || '#22c55e',
+            warning_color: page.warning_color || '#eab308',
+            error_color: page.error_color || '#ef4444',
             theme_mode: page.theme_mode || 'system',
             bg_pattern: page.bg_pattern || 'none',
             monitor_style: page.monitor_style || 'bars',
@@ -763,33 +818,62 @@ export function EditStatusPagePage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-default-100 mt-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium block">Hero Background Color</label>
-                    <div className="flex gap-3 items-center">
-                      <div className="relative">
-                        <input
-                          type="color"
-                          value={formData.hero_bg_color}
-                          onChange={(e) => setFormData({ ...formData, hero_bg_color: e.target.value })}
-                          className="w-10 h-10 p-0 border-0 rounded-lg cursor-pointer overflow-hidden opacity-0 absolute inset-0 z-10"
-                        />
-                        <div
-                          className="w-10 h-10 rounded-lg border border-default-200 shadow-sm"
-                          style={{ backgroundColor: formData.hero_bg_color }}
-                        />
-                      </div>
-                      <Input
-                        aria-label="Hero Background Color Code"
-                        value={formData.hero_bg_color}
-                        onValueChange={(value) => setFormData({ ...formData, hero_bg_color: value })}
-                        placeholder="#1E2A38"
-                        className="max-w-30"
-                        startContent={<span className="text-default-400 text-small">#</span>}
-                      />
-                    </div>
-                    <p className="text-xs text-default-400 mt-1">Background color for the header area</p>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-4 border-t border-default-100 mt-2">
+                  <ColorPickerInput
+                    label="Header Background"
+                    value={formData.hero_bg_color}
+                    onChange={(val) => setFormData({ ...formData, hero_bg_color: val })}
+                    description="Background color for the top header section"
+                  />
+                  <ColorPickerInput
+                    label="Primary Color"
+                    value={formData.primary_color}
+                    onChange={(val) => setFormData({ ...formData, primary_color: val })}
+                    description="Buttons and links"
+                  />
+                  <ColorPickerInput
+                    label="Page Background"
+                    value={formData.bg_color}
+                    onChange={(val) => setFormData({ ...formData, bg_color: val })}
+                    description="Main page background"
+                  />
+                  <ColorPickerInput
+                    label="Text Color"
+                    value={formData.text_color}
+                    onChange={(val) => setFormData({ ...formData, text_color: val })}
+                    description="Primary text color"
+                  />
+                  <ColorPickerInput
+                    label="Secondary Text"
+                    value={formData.secondary_color}
+                    onChange={(val) => setFormData({ ...formData, secondary_color: val })}
+                    description="Subtitles and descriptions"
+                  />
+                  <ColorPickerInput
+                    label="Footer Background"
+                    value={formData.footer_bg_color}
+                    onChange={(val) => setFormData({ ...formData, footer_bg_color: val })}
+                    description="Footer section background"
+                  />
+                  <ColorPickerInput
+                    label="Success (Up)"
+                    value={formData.success_color}
+                    onChange={(val) => setFormData({ ...formData, success_color: val })}
+                    description="Services operational"
+                  />
+                  <ColorPickerInput
+                    label="Warning (Degraded)"
+                    value={formData.warning_color}
+                    onChange={(val) => setFormData({ ...formData, warning_color: val })}
+                    description="Partial outages/maintenance"
+                  />
+                  <ColorPickerInput
+                    label="Error (Down)"
+                    value={formData.error_color}
+                    onChange={(val) => setFormData({ ...formData, error_color: val })}
+                    description="Service outages"
+                  />
+
 
                   <Select
                     label="Theme Mode"
@@ -851,7 +935,14 @@ export function EditStatusPagePage() {
                   onValueChange={(value) => setFormData({ ...formData, og_image_url: value })}
                   placeholder="https://example.com/og-image.jpg"
                   type="url"
-                  description="Preview image displayed when sharing on social media (1200x630px)."
+                  description={
+                    <span>
+                      Preview image displayed when sharing on social media.
+                      <span className="text-primary block mt-1">
+                        ✨ Leave empty to automatically generate a branded image with your page title.
+                      </span>
+                    </span>
+                  }
                 />
               </CardBody>
             </Card>
@@ -924,7 +1015,8 @@ export function EditStatusPagePage() {
             </Button>
           </div>
         </form>
-      )}
+      )
+      }
 
       <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
         <ModalContent>
@@ -949,6 +1041,6 @@ export function EditStatusPagePage() {
           )}
         </ModalContent>
       </Modal>
-    </div>
+    </div >
   );
 }

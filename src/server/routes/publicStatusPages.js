@@ -1,4 +1,6 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
+import { JWT_SECRET } from '../middleware/auth.js';
 import {
   getStatusPageBySlug,
   getDefaultStatusPage,
@@ -27,9 +29,25 @@ router.get('/:slug', async (req, res) => {
 
     console.log(`[Public Page Access] Slug: ${slug}, ID: ${page.id}, is_public: ${page.is_public}`);
 
+    // Check if page is private
     if (page.is_public !== 1 && page.is_public !== true && page.is_public !== '1') {
-      console.log(`[Public Page Access] Access DENIED for ${slug}`);
-      return res.status(403).json({ error: 'This status page is not public' });
+      const authHeader = req.headers.authorization;
+
+      // If no token provided for private page
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.log(`[Public Page Access] Access DENIED (No Token) for ${slug}`);
+        // Return 401 to trigger redirect to login
+        return res.status(401).json({ error: 'Unauthorized: Private status page requires login' });
+      }
+
+      const token = authHeader.split(' ')[1];
+      try {
+        jwt.verify(token, JWT_SECRET);
+        // Token valid, allow access
+      } catch (error) {
+        console.log(`[Public Page Access] Access DENIED (Invalid Token) for ${slug}`);
+        return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+      }
     }
 
     res.json({
@@ -62,8 +80,20 @@ router.get('/:slug/sections', async (req, res) => {
     console.log(`[Public Sections Access] Slug: ${slug}, ID: ${page.id}, is_public: ${page.is_public}`);
 
     if (page.is_public !== 1 && page.is_public !== true && page.is_public !== '1') {
-      console.log(`[Public Sections Access] Access DENIED for ${slug}`);
-      return res.status(403).json({ error: 'This status page is not public' });
+      const authHeader = req.headers.authorization;
+
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.log(`[Public Sections Access] Access DENIED (No Token) for ${slug}`);
+        return res.status(401).json({ error: 'Unauthorized: Private status page requires login' });
+      }
+
+      const token = authHeader.split(' ')[1];
+      try {
+        jwt.verify(token, JWT_SECRET);
+      } catch (error) {
+        console.log(`[Public Sections Access] Access DENIED (Invalid Token) for ${slug}`);
+        return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+      }
     }
 
     const sections = await getSectionsWithServices(page.id);
@@ -91,7 +121,18 @@ router.get('/:slug/services', async (req, res) => {
     }
 
     if (page.is_public !== 1 && page.is_public !== true && page.is_public !== '1') {
-      return res.status(403).json({ error: 'This status page is not public' });
+      const authHeader = req.headers.authorization;
+
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized: Private status page requires login' });
+      }
+
+      const token = authHeader.split(' ')[1];
+      try {
+        jwt.verify(token, JWT_SECRET);
+      } catch (error) {
+        return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+      }
     }
 
     // Use raw query for complex stats or Prisma relations with aggregation

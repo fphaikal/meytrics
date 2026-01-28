@@ -50,6 +50,14 @@ export async function createStatusPage(data) {
         logo_url: data.logo_url || null,
         favicon_url: data.favicon_url || null,
         hero_bg_color: data.hero_bg_color || '#1e2a38',
+        primary_color: data.primary_color || '#3b82f6',
+        secondary_color: data.secondary_color || '#64748b',
+        bg_color: data.bg_color || '#f8fafc',
+        text_color: data.text_color || '#0f172a',
+        footer_bg_color: data.footer_bg_color || '#ffffff',
+        success_color: data.success_color || '#22c55e',
+        warning_color: data.warning_color || '#eab308',
+        error_color: data.error_color || '#ef4444',
         theme_mode: data.theme_mode || 'system',
         bg_pattern: data.bg_pattern || 'none',
         monitor_style: data.monitor_style || 'bars',
@@ -71,14 +79,6 @@ export async function updateStatusPage(id, data) {
       });
     }
 
-    // Prisma update doesn't have COALESCE but undefined ignores the field update
-    // So simple update works if we only pass defined fields.
-    // However, data object might have undefineds?
-    // We should clean data object or just pass it as is (if API passes full obj or partial)
-    // The previous implementation used COALESCE(?, existing).
-    // Here we can fetch existing first if needed, OR just pass data if it contains the updates.
-    // Assuming data contains only fields to update.
-
     try {
       const updateData = {};
       if (data.slug !== undefined) updateData.slug = data.slug;
@@ -89,6 +89,14 @@ export async function updateStatusPage(id, data) {
       if (data.logo_url !== undefined) updateData.logo_url = data.logo_url;
       if (data.favicon_url !== undefined) updateData.favicon_url = data.favicon_url;
       if (data.hero_bg_color !== undefined) updateData.hero_bg_color = data.hero_bg_color;
+      if (data.primary_color !== undefined) updateData.primary_color = data.primary_color;
+      if (data.secondary_color !== undefined) updateData.secondary_color = data.secondary_color;
+      if (data.bg_color !== undefined) updateData.bg_color = data.bg_color;
+      if (data.text_color !== undefined) updateData.text_color = data.text_color;
+      if (data.footer_bg_color !== undefined) updateData.footer_bg_color = data.footer_bg_color;
+      if (data.success_color !== undefined) updateData.success_color = data.success_color;
+      if (data.warning_color !== undefined) updateData.warning_color = data.warning_color;
+      if (data.error_color !== undefined) updateData.error_color = data.error_color;
       if (data.theme_mode !== undefined) updateData.theme_mode = data.theme_mode;
       if (data.bg_pattern !== undefined) updateData.bg_pattern = data.bg_pattern;
       if (data.monitor_style !== undefined) updateData.monitor_style = data.monitor_style;

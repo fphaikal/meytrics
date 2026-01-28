@@ -2,6 +2,35 @@
 
 All notable changes to the **MEYTRICS** project will be documented in this file.
 
+## [1.3.6] - 2026-01-28
+
+### 🚀 SEO & Social Sharing
+- **Dynamic OG Images**: Implemented automatic generation of branded Open Graph images for status pages.
+    - Images now dynamically include the status page **Title**, **Subtitle**, and custom **Background** (colors/patterns).
+    - Added a "Powered by Meytrics" watermark to generated images.
+    - Updated the Admin UI to inform users that leaving the "OG Image URL" empty activates this auto-generation feature.
+- **Enhanced Meta Tags**: Significantly improved SEO and social preview capabilities.
+    - **Server-Side Injection**: Added middleware to inject dynamic `<meta>` tags (Title, Description, OG Image, Twitter Card) directly into the HTML response before serving.
+    - **Platform Coverage**: Added specific tags for **Twitter/X** (`twitter:card`, `twitter:domain`) and **Facebook/LinkedIn** (`og:url`, `og:type`) to ensure rich previews across all major social networks.
+    - **Title Formatting**: Standardized page titles to the format `[Page Name] by Meytrics`.
+
+### 🎨 Customization
+- **Status Page Branding**: Introduced extensive color customization options to fully align status pages with brand identity.
+    - **Global Colors**: Added customization for **Primary**, **Secondary**, **Background**, **Text**, and **Footer** colors.
+    - **Status Indication**: Enabled custom colors for **Success**, **Warning**, and **Error** states.
+    - **Admin Editor**: Enhanced the status page editor with intuitive color pickers for all new fields.
+    - **Backend Support**: Updated Prisma schema and API endpoints to support specific color configurations per status page.
+
+### 🐛 Fixes & Access Control
+- **Authentication Logic**: Refined public vs. private status page access.
+    - **Public Pages**: Fixed issue where expired admin sessions caused login redirects; now utilizes dedicated unauthenticated endpoints for robust public access.
+    - **Private Pages**: Now consistently return `401 Unauthorized` (previously `403`) when accessed without credentials, correctly triggering the login flow.
+
+### 💅 UI/UX
+- **Header Layout**: Refined the Status Page header for better responsiveness and visual hierarchy.
+    - **Compact Indicator**: Switched to a refined, side-by-side status indicator layout.
+    - **Responsive Typography**: Implemented natural text wrapping for status messages ("All systems Operational") to prevent varied device widths from breaking the layout.
+
 ## [1.3.54] - 2026-01-27
 
 ### 🐛 Docker Fixes

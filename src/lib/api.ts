@@ -114,7 +114,7 @@ export const getServicePingSummary = (serviceId: number, params: { hours?: numbe
 export const getSettings = () => fetchAPI('/api/settings');
 export const updateSettings = (data: Record<string, string>) =>
     fetchAPI('/api/settings', { method: 'PUT', body: JSON.stringify(data) });
-export const getPublicSettings = () => fetchAPI('/api/settings/public');
+export const getPublicSettings = () => fetchAPI('/api/public/settings');
 export const testSmtp = (email: string, config?: Record<string, string>) =>
     fetchAPI('/api/settings/test-smtp', { method: 'POST', body: JSON.stringify({ email, config }) });
 

@@ -228,6 +228,14 @@ export interface StatusPage {
     logo_url: string | null;
     favicon_url: string | null;
     hero_bg_color: string;
+    primary_color?: string;
+    secondary_color?: string;
+    bg_color?: string;
+    text_color?: string;
+    footer_bg_color?: string;
+    success_color?: string;
+    warning_color?: string;
+    error_color?: string;
     theme_mode: string;
     bg_pattern: string;
     monitor_style: string;
